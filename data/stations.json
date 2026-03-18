@@ -1,0 +1,155 @@
+{
+  "update_time": "2026-03-18 12:15:17",
+  "stations": [
+    {
+      "id": "1",
+      "name": "中石化朝阳加油站",
+      "address": "朝阳区",
+      "distance": "0.5km",
+      "lat": 39.904,
+      "lng": 116.408,
+      "discount": "暂无优惠",
+      "brand": "中石化"
+    },
+    {
+      "id": "2",
+      "name": "中石油海淀加油站",
+      "address": "海淀区",
+      "distance": "1.2km",
+      "lat": 39.914,
+      "lng": 116.398,
+      "discount": "暂无优惠",
+      "brand": "中石油"
+    },
+    {
+      "id": "3",
+      "name": "壳牌东城加油站",
+      "address": "东城区",
+      "distance": "1.5km",
+      "lat": 39.894,
+      "lng": 116.418,
+      "discount": "暂无优惠",
+      "brand": "壳牌"
+    },
+    {
+      "id": "4",
+      "name": "民营丰台加油站",
+      "address": "丰台区",
+      "distance": "2.0km",
+      "lat": 39.884,
+      "lng": 116.388,
+      "discount": "暂无优惠",
+      "brand": "民营"
+    },
+    {
+      "id": "5",
+      "name": "中化石油加油站",
+      "address": "西城区",
+      "distance": "2.5km",
+      "lat": 39.914,
+      "lng": 116.378,
+      "discount": "暂无优惠",
+      "brand": "中化"
+    },
+    {
+      "id": "1",
+      "name": "中石化朝阳加油站",
+      "address": "朝阳区",
+      "distance": "0.5km",
+      "lat": 39.904,
+      "lng": 116.408,
+      "discount": "暂无优惠",
+      "brand": "中石化"
+    },
+    {
+      "id": "2",
+      "name": "中石油海淀加油站",
+      "address": "海淀区",
+      "distance": "1.2km",
+      "lat": 39.914,
+      "lng": 116.398,
+      "discount": "暂无优惠",
+      "brand": "中石油"
+    },
+    {
+      "id": "3",
+      "name": "壳牌东城加油站",
+      "address": "东城区",
+      "distance": "1.5km",
+      "lat": 39.894,
+      "lng": 116.418,
+      "discount": "暂无优惠",
+      "brand": "壳牌"
+    },
+    {
+      "id": "4",
+      "name": "民营丰台加油站",
+      "address": "丰台区",
+      "distance": "2.0km",
+      "lat": 39.884,
+      "lng": 116.388,
+      "discount": "暂无优惠",
+      "brand": "民营"
+    },
+    {
+      "id": "5",
+      "name": "中化石油加油站",
+      "address": "西城区",
+      "distance": "2.5km",
+      "lat": 39.914,
+      "lng": 116.378,
+      "discount": "暂无优惠",
+      "brand": "中化"
+    },
+    {
+      "id": "1",
+      "name": "中石化朝阳加油站",
+      "address": "朝阳区",
+      "distance": "0.5km",
+      "lat": 39.904,
+      "lng": 116.408,
+      "discount": "暂无优惠",
+      "brand": "中石化"
+    },
+    {
+      "id": "2",
+      "name": "中石油海淀加油站",
+      "address": "海淀区",
+      "distance": "1.2km",
+      "lat": 39.914,
+      "lng": 116.398,
+      "discount": "暂无优惠",
+      "brand": "中石油"
+    },
+    {
+      "id": "3",
+      "name": "壳牌东城加油站",
+      "address": "东城区",
+      "distance": "1.5km",
+      "lat": 39.894,
+      "lng": 116.418,
+      "discount": "暂无优惠",
+      "brand": "壳牌"
+    },
+    {
+      "id": "4",
+      "name": "民营丰台加油站",
+      "address": "丰台区",
+      "distance": "2.0km",
+      "lat": 39.884,
+      "lng": 116.388,
+      "discount": "暂无优惠",
+      "brand": "民营"
+    },
+    {
+      "id": "5",
+      "name": "中化石油加油站",
+      "address": "西城区",
+      "distance": "2.5km",
+      "lat": 39.914,
+      "lng": 116.378,
+      "discount": "暂无优惠",
+      "brand": "中化"
+    }
+  ]
+}
