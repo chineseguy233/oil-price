@@ -5,6 +5,18 @@ const crypto = require('crypto');
 
 const app = express();
 app.use(express.json());
+
+// CORS 配置
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 const PORT = 3000;
 
 const USERS_FILE = path.join(__dirname, '../data/users.json');

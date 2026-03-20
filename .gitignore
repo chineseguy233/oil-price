@@ -1,5 +1,38 @@
+# 依赖
 node_modules/
-dpm-lock.yaml
+
+# 构建
 dist/
-.DS_Store
+build/
+
+# 日志
 *.log
+npm-debug.log*
+
+# 环境
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 数据（敏感）
+data/*.json
+data/*.db
+
+# 备份
+*.bak
+*.bak2
+*.backup
+
+# 原型设计
+prototype*.html
+design*.html
+index_backup.html
