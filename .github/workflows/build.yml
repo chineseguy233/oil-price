@@ -8,47 +8,33 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: ubuntu:latest
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Node.js
-        run: |
-          curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-          apt-get install -y nodejs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
           
       - name: Install dependencies
         run: npm ci
-        
+         
       - name: Build
         run: npm run build
 
-      - name: Install Android SDK
-        run: |
-          apt-get update
-          apt-get install -y wget unzip openjdk-17-jdk
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
-          mkdir -p /opt/android-sdk/cmdline-tools
-          unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools
-          mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
-          export ANDROID_HOME=/opt/android-sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-
-      - name: Add Android platform
+      - name: Add Android Platform
         run: npx cap add android
 
       - name: Build APK
-        env:
-          ANDROID_HOME: /opt/android-sdk
-        run: |
-          export ANDROID_HOME=/opt/android-sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
+          script: |
+            cd android
+            chmod +x gradlew
+            ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
