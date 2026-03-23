@@ -21,6 +21,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install Java 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk
+          java -version
+          
       - name: Install Android SDK
         run: |
           mkdir -p $HOME/android-sdk
@@ -28,18 +34,20 @@ jobs:
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
           unzip -q cmdline-tools.zip
           mkdir -p cmdline-tools/latest
-          mv cmdline-tools/bin cmdline-tools/lib cmdline-tools/latest/
+          (mv cmdline-tools/bin cmdline-tools/lib cmdline-tools/latest/ 2>/dev/null || true)
           export ANDROID_HOME=$HOME/android-sdk
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
           yes | sdkmanager --licenses || true
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-          
+
       - name: Build APK
         env:
           ANDROID_HOME: $HOME/android-sdk
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         run: |
           export ANDROID_HOME=$HOME/android-sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$JAVA_HOME/bin
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
