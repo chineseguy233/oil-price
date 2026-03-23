@@ -21,9 +21,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Add Android
-        run: npx cap add android
-        
       - name: Build APK
         run: |
           cd android
