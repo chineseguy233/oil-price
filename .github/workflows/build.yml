@@ -34,12 +34,6 @@ jobs:
           yes | sdkmanager --licenses || true
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
           
-      - name: Install Capacitor Android
-        run: npm install @capacitor/android @capacitor/cli
-        
-      - name: Add Android Platform
-        run: npx cap add android
-
       - name: Build APK
         env:
           ANDROID_HOME: $HOME/android-sdk
