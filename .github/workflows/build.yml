@@ -21,6 +21,9 @@ jobs:
         
       - name: Build
         run: npm run build --if-present
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
         
       - name: Add Android
         run: npx cap add android
