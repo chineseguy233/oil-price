@@ -359,6 +359,34 @@ app.listen(PORT, () => {
 
 // ============ 加油站API ============
 
+// 按省份搜索加油站
+app.get('/api/stations/search', (req, res) => {
+    const province = req.query.province || '北京';
+    
+    // 模拟加油站数据（实际应接地图API）
+    const brands = ['中石化', '中石油', '壳牌', '中化石油', '道达尔', '民营'];
+    const districts = ['朝阳区', '海淀区', '东城区', '西城区', '丰台区', '石景山区', '通州区', '大兴区'];
+    
+    const mockStations = Array.from({ length: 15 }, (_, i) => {
+        const basePrice92 = 7.0 + Math.random() * 1.5;
+        const basePrice95 = basePrice92 + 0.5 + Math.random() * 0.8;
+        const distance = (Math.random() * 8).toFixed(1);
+        const brand = brands[Math.floor(Math.random() * brands.length)];
+        
+        return {
+            id: `${province}-${i + 1}`,
+            name: `${brand}${districts[i % districts.length]}加油站`,
+            address: `${province}${districts[i % districts.length]}${Math.floor(Math.random() * 200) + 1}号`,
+            brand,
+            distance: `${distance}km`,
+            price92: parseFloat(basePrice92.toFixed(2)),
+            price95: parseFloat(basePrice95.toFixed(2)),
+        };
+    });
+    
+    res.json({ success: true, stations: mockStations, province });
+});
+
 // 获取附近加油站
 app.get('/api/stations/nearby', (req, res) => {
     const lat = parseFloat(req.query.lat) || 39.9;
@@ -426,4 +454,105 @@ app.delete('/api/stations/subscribe/:stationId', authMiddleware, (req, res) => {
     }
     
     res.json({ success: true, message: '已取消订阅' });
+});
+
+// ============ 油价提醒API ============
+
+const OIL_PRICES_FILE = path.join(__dirname, '../data/oil_prices.json');
+
+// 获取油价数据（用于计算提醒）
+function getOilPrices() {
+    try {
+        if (fs.existsSync(OIL_PRICES_FILE)) {
+            return JSON.parse(fs.readFileSync(OIL_PRICES_FILE, 'utf-8'));
+        }
+    } catch (e) {}
+    return null;
+}
+
+// 获取用户的提醒设置
+app.get('/api/remind', authMiddleware, (req, res) => {
+    const users = getUsers();
+    const reminders = users[req.user.phone]?.remindSettings || [];
+    res.json({ success: true, reminders });
+});
+
+// 设置油价提醒
+app.post('/api/remind', authMiddleware, (req, res) => {
+    const { province, oilType, threshold } = req.body;
+    
+    if (!province || !oilType || !threshold) {
+        return res.json({ success: false, message: '缺少参数' });
+    }
+    
+    const users = getUsers();
+    if (!users[req.user.phone]) {
+        users[req.user.phone] = {};
+    }
+    if (!users[req.user.phone].remindSettings) {
+        users[req.user.phone].remindSettings = [];
+    }
+    
+    const newRemind = {
+        id: Date.now().toString(),
+        province,
+        oilType,
+        threshold: parseFloat(threshold),
+        createdAt: new Date().toISOString(),
+        lastNotifiedPrice: null
+    };
+    
+    users[req.user.phone].remindSettings.push(newRemind);
+    saveUsers(users);
+    
+    res.json({ success: true, remind: newRemind, message: '提醒设置成功' });
+});
+
+// 删除提醒
+app.delete('/api/remind/:id', authMiddleware, (req, res) => {
+    const id = req.params.id;
+    const users = getUsers();
+    
+    if (users[req.user.phone]?.remindSettings) {
+        users[req.user.phone].remindSettings = 
+            users[req.user.phone].remindSettings.filter(r => r.id !== id);
+        saveUsers(users);
+    }
+    
+    res.json({ success: true, message: '已删除提醒' });
+});
+
+// 检查油价是否触发提醒（内部接口，供定时任务调用）
+app.get('/api/remind/check', authMiddleware, (req, res) => {
+    const users = getUsers();
+    const reminders = users[req.user.phone]?.remindSettings || [];
+    const oilData = getOilPrices();
+    
+    if (!oilData || !oilData.prices) {
+        return res.json({ success: true, triggered: [] });
+    }
+    
+    const triggered = [];
+    for (const remind of reminders) {
+        const provinceData = oilData.prices[remind.province];
+        if (!provinceData) continue;
+        
+        const currentPrice = provinceData[remind.oilType];
+        if (!currentPrice) continue;
+        
+        // 如果有上次通知价格，检查涨幅
+        if (remind.lastNotifiedPrice !== null) {
+            const priceDiff = currentPrice - remind.lastNotifiedPrice;
+            if (priceDiff > remind.threshold) {
+                triggered.push({
+                    remind,
+                    currentPrice,
+                    lastPrice: remind.lastNotifiedPrice,
+                    priceDiff
+                });
+            }
+        }
+    }
+    
+    res.json({ success: true, triggered });
 });

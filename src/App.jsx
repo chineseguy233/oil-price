@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import StationsPage from './pages/StationsPage'
 
 const API_BASE = '/api'
 
@@ -262,6 +263,8 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
   const [trendData, setTrendData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [days, setDays] = useState(7)
+  const chartRef = useRef(null)
+  const chartInstance = useRef(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -272,6 +275,114 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
   }, [selectedRegion, days])
 
   useEffect(() => { load() }, [load])
+
+  // 初始化和更新图表
+  useEffect(() => {
+    if (!chartRef.current) return
+    if (!window.echarts) return
+
+    const history = trendData?.history || {}
+    const dates = Object.keys(history).sort()
+    const hasData = dates.length > 0
+
+    if (!hasData || loading) {
+      // 销毁图表实例
+      if (chartInstance.current) {
+        chartInstance.current.dispose()
+        chartInstance.current = null
+      }
+      return
+    }
+
+    // 配置图表数据
+    const series = OIL_TYPES.map(oil => ({
+      name: oil.label,
+      type: 'line',
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 6,
+      lineStyle: { width: 2 },
+      itemStyle: { color: oil.color },
+      data: dates.map(date => history[date]?.[oil.key] ?? null),
+      connectNulls: true,
+    }))
+
+    const startDate = dates[0] || ''
+    const endDate = dates[dates.length - 1] || ''
+
+    const option = {
+      backgroundColor: 'transparent',
+      title: {
+        text: `${selectedRegion} 油价走势（${startDate} ~ ${endDate}）`,
+        left: 'center',
+        top: 5,
+        textStyle: { fontSize: 14, fontWeight: 'bold', color: '#374151' },
+      },
+      legend: {
+        top: 35,
+        left: 'center',
+        itemWidth: 14,
+        itemHeight: 8,
+        textStyle: { fontSize: 11, color: '#6b7280' },
+      },
+      grid: { left: 50, right: 20, top: 70, bottom: 40 },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        borderColor: '#e5e7eb',
+        borderWidth: 1,
+        textStyle: { fontSize: 12, color: '#374151' },
+        formatter: params => {
+          let result = `<div style="font-weight:bold;margin-bottom:4px">${params[0]?.axisValue}</div>`
+          params.forEach(p => {
+            if (p.value !== null) {
+              result += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
+                <span>${p.seriesName}: <b>${p.value}</b> 元/升</span>
+              </div>`
+            }
+          })
+          return result
+        },
+      },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLine: { lineStyle: { color: '#e5e7eb' } },
+        axisLabel: { fontSize: 10, color: '#9ca3af', rotate: 30 },
+        axisTick: { show: false },
+      },
+      yAxis: {
+        type: 'value',
+        scale: true,
+        splitLine: { lineStyle: { color: '#f3f4f6' } },
+        axisLabel: { fontSize: 10, color: '#9ca3af', formatter: v => v.toFixed(2) },
+      },
+      series,
+    }
+
+    if (chartInstance.current) {
+      chartInstance.current.setOption(option, true)
+    } else {
+      chartInstance.current = window.echarts.init(chartRef.current)
+      chartInstance.current.setOption(option, true)
+    }
+
+    return () => {
+      // 清理（不销毁，保留实例以便复用）
+    }
+  }, [trendData, loading, selectedRegion])
+
+  // 响应式 resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (chartInstance.current) {
+        chartInstance.current.resize()
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   return (
     <div style={{ padding: '16px', paddingBottom: '80px' }}>
@@ -315,29 +426,12 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
         </div>
       </div>
 
-      {/* 趋势卡片 */}
+      {/* 趋势图表 */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-        <div style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '16px', color: '#374151' }}>
-          📈 {selectedRegion} 油价走势（{days}天）
-        </div>
         {loading ? (
           <div style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0' }}>加载中...</div>
         ) : trendData && Object.keys(trendData.history || {}).length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {Object.entries(trendData.history).sort().map(([date, prices]) => (
-              <div key={date} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '12px 14px', background: '#f9fafb', borderRadius: '10px', fontSize: '13px',
-              }}>
-                <span style={{ color: '#6b7280', fontWeight: '500' }}>{date}</span>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <span style={{ color: OIL_COLORS['92'] }}>92# {prices['92'] ?? '—'}</span>
-                  <span style={{ color: OIL_COLORS['95'] }}>95# {prices['95'] ?? '—'}</span>
-                  <span style={{ color: OIL_COLORS['0'] }}>0# {prices['0'] ?? '—'}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <div ref={chartRef} style={{ width: '100%', height: '300px' }} />
         ) : (
           <div style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0', fontSize: '14px' }}>
             暂无历史数据，请先等待爬虫运行几天积累数据
@@ -439,6 +533,61 @@ function FuelPage() {
 function MyPage() {
   const [crawlStatus, setCrawlStatus] = useState(null)
   const [health, setHealth] = useState(null)
+  const [showRemindModal, setShowRemindModal] = useState(false)
+  const [reminders, setReminders] = useState([])
+  const [remindForm, setRemindForm] = useState({ province: '北京', oilType: '92', threshold: '0.1' })
+  const [regions, setRegions] = useState(['北京', '上海', '广东', '江苏', '浙江'])
+
+  useEffect(() => {
+    fetch(`${API_BASE}/health`).then(r => r.json()).then(setHealth).catch(() => {})
+    fetch(`${API_BASE}/oil-prices`).then(r => r.json()).then(d => {
+      if (d.prices) setRegions(Object.keys(d.prices))
+    }).catch(() => {})
+  }, [])
+
+  // 加载提醒设置
+  const loadReminders = () => {
+    fetch(`${API_BASE}/remind`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` } })
+      .then(r => r.json())
+      .then(d => { if (d.success) setReminders(d.reminders || []) })
+      .catch(() => {})
+  }
+
+  // 打开提醒弹窗时加载数据
+  const openRemindModal = () => {
+    loadReminders()
+    setShowRemindModal(true)
+  }
+
+  // 添加提醒
+  const addReminder = () => {
+    const token = localStorage.getItem('token')
+    if (!token) return alert('请先登录')
+    fetch(`${API_BASE}/remind`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(remindForm)
+    }).then(r => r.json()).then(d => {
+      if (d.success) {
+        setReminders([...reminders, d.remind])
+        setRemindForm({ province: '北京', oilType: '92', threshold: '0.1' })
+      } else {
+        alert(d.message || '设置失败')
+      }
+    }).catch(() => alert('设置失败'))
+  }
+
+  // 删除提醒
+  const deleteReminder = (id) => {
+    const token = localStorage.getItem('token')
+    if (!token) return
+    fetch(`${API_BASE}/remind/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).then(r => r.json()).then(d => {
+      if (d.success) setReminders(reminders.filter(r => r.id !== id))
+    }).catch(() => {})
+  }
 
   useEffect(() => {
     fetch(`${API_BASE}/health`).then(r => r.json()).then(setHealth).catch(() => {})
@@ -503,7 +652,7 @@ function MyPage() {
       {/* 功能菜单 */}
       <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
         <MenuItem icon="🔄" label="手动更新油价" onClick={handleCrawl} status={crawlStatus} />
-        <MenuItem icon="🔔" label="油价提醒" value="未设置" />
+        <MenuItem icon="🔔" label="油价提醒" value={reminders.length > 0 ? `${reminders.length}个` : '未设置'} onClick={openRemindModal} />
         <MenuItem icon="⭐" label="收藏油站" value="0个" />
         <MenuItem icon="📍" label="订阅油站" value="0个" />
         <MenuItem icon="⚙️" label="设置" />
@@ -511,6 +660,81 @@ function MyPage() {
 
       {/* 广告位 */}
       <AdBanner slot="my_page_bottom" style={{ marginTop: '16px' }} />
+
+      {/* 油价提醒弹窗 */}
+      {showRemindModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }} onClick={() => setShowRemindModal(false)}>
+          <div style={{
+            background: 'white', borderRadius: '16px', width: '90%', maxWidth: '360px',
+            maxHeight: '80vh', overflow: 'auto', padding: '20px'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', textAlign: 'center' }}>
+              油价提醒设置
+            </div>
+
+            {/* 添加提醒表单 */}
+            <div style={{ background: '#f9fafb', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>省份</label>
+                <select value={remindForm.province} onChange={e => setRemindForm({...remindForm, province: e.target.value})}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px' }}>
+                  {regions.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>油号</label>
+                <select value={remindForm.oilType} onChange={e => setRemindForm({...remindForm, oilType: e.target.value})}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px' }}>
+                  {OIL_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>涨价阈值（元/升）</label>
+                <input type="number" step="0.05" min="0.05" value={remindForm.threshold}
+                  onChange={e => setRemindForm({...remindForm, threshold: e.target.value})}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px' }} />
+              </div>
+              <button onClick={addReminder}
+                style={{ width: '100%', padding: '10px', background: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
+                添加提醒
+              </button>
+            </div>
+
+            {/* 已有提醒列表 */}
+            <div>
+              <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}>已设置的提醒（{reminders.length}个）</div>
+              {reminders.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af', fontSize: '13px' }}>暂无提醒设置</div>
+              )}
+              {reminders.map(r => (
+                <div key={r.id} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '10px 12px', background: '#fff', border: '1px solid #e5e7eb',
+                  borderRadius: '8px', marginBottom: '8px'
+                }}>
+                  <div>
+                    <div style={{ fontSize: '14px', color: '#374151' }}>{r.province} {OIL_TYPES.find(t => t.key === r.oilType)?.label}</div>
+                    <div style={{ fontSize: '12px', color: '#9ca3af' }}>涨幅超 {r.threshold}元/升</div>
+                  </div>
+                  <button onClick={() => deleteReminder(r.id)}
+                    style={{ padding: '4px 12px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => setShowRemindModal(false)}
+              style={{ width: '100%', marginTop: '12px', padding: '10px', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -544,6 +768,7 @@ export default function App() {
     { id: 'price', name: '油价', icon: '⛽' },
     { id: 'trend', name: '趋势', icon: '📈' },
     { id: 'fuel', name: '油耗', icon: '📊' },
+    { id: 'stations', name: '附近', icon: '🔍' },
     { id: 'my', name: '我的', icon: '👤' },
   ]
 
@@ -585,6 +810,13 @@ export default function App() {
           <TrendPage selectedRegion={selectedRegion} setSelectedRegion={setSelectedRegion} regions={regions} />
         )}
         {tab === 'fuel' && <FuelPage />}
+        {tab === 'stations' && (
+          <StationsPage
+            selectedRegion={selectedRegion}
+            setSelectedRegion={setSelectedRegion}
+            regions={regions}
+          />
+        )}
         {tab === 'my' && <MyPage />}
       </div>
 

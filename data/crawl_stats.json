@@ -11,10 +11,16 @@
       "success": true,
       "source": "autohome",
       "provinces": 31
+    },
+    {
+      "time": "2026-04-18 23:48",
+      "success": true,
+      "source": "autohome",
+      "provinces": 31
     }
   ],
   "last_crawl": {
-    "time": "2026-04-18 20:17",
+    "time": "2026-04-18 23:48",
     "success": true,
     "source": "autohome",
     "provinces": 31
