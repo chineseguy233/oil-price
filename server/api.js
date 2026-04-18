@@ -280,17 +280,77 @@ app.get('/api/provinces', (req, res) => {
     }
 });
 
+// ============ 健康检查API ============
+
+// 数据新鲜度检查
+app.get('/api/health', (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+
+    const pricesPath = path.join(__dirname, '../data/oil_prices.json');
+    const statsPath = path.join(__dirname, '../data/crawl_stats.json');
+
+    let freshness = { is_fresh: false, hours_old: null, last_update: null, source: null, stale_warning: true };
+    let stats = {};
+
+    try {
+        if (fs.existsSync(pricesPath)) {
+            const data = JSON.parse(fs.readFileSync(pricesPath, 'utf-8'));
+            freshness = {
+                last_update: data.update_time || null,
+                source: data.source || null,
+                fetch_time: data.fetched_at || null,
+                provinces_count: Object.keys(data.prices || {}).length,
+            };
+            // 简单小时数估算
+            if (data.fetched_at) {
+                const fetched = new Date(data.fetched_at);
+                const now = new Date();
+                freshness.hours_old = ((now - fetched) / 3600000).toFixed(1);
+                freshness.is_fresh = freshness.hours_old < 24;
+                freshness.stale_warning = freshness.hours_old >= 24;
+            } else {
+                freshness.stale_warning = true;
+            }
+        }
+    } catch (e) {}
+
+    try {
+        if (fs.existsSync(statsPath)) {
+            stats = JSON.parse(fs.readFileSync(statsPath, 'utf-8'));
+        }
+    } catch (e) {}
+
+    const status = freshness.is_fresh ? 'healthy' : 'stale';
+    res.json({
+        status,
+        freshness,
+        stats: {
+            last_crawl: stats.last_crawl || null,
+            success_rate: stats.success_rate || null,
+        }
+    });
+});
+
 // 手动触发爬虫
 app.post('/api/crawl', (req, res) => {
-    const { exec } = require('child_process');
-    exec('cd ' + path.dirname(__dirname) + '/crawler && python3 oil_crawler_v2.py >> /tmp/oil_crawl.log 2>&1', 
-        (error, stdout, stderr) => {
-            if (error) {
-                res.json({ success: false, error: error.message });
-            } else {
-                res.json({ success: true, message: 'Crawl completed' });
-            }
-        });
+    const { spawn } = require('child_process');
+    // 使用 crawler_manager.py（带重试）
+    const py = spawn('python3', [
+        require('path').resolve(__dirname, '../crawler/crawler_manager.py'),
+        '--quick'
+    ], { cwd: require('path').resolve(__dirname, '..') });
+
+    let output = '';
+    py.stdout.on('data', d => output += d.toString());
+    py.stderr.on('data', d => output += d.toString());
+    py.on('close', code => {
+        if (code === 0) {
+            res.json({ success: true, message: '更新成功', output });
+        } else {
+            res.json({ success: false, error: '更新失败', output });
+        }
+    });
 });
 
 app.listen(PORT, () => {

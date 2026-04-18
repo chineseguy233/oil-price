@@ -1,0 +1,22 @@
+{
+  "history": [
+    {
+      "date": "2026-04-18",
+      "source": "autohome",
+      "provinces": 31,
+      "stale": false
+    },
+    {
+      "time": "2026-04-18 20:17",
+      "success": true,
+      "source": "autohome",
+      "provinces": 31
+    }
+  ],
+  "last_crawl": {
+    "time": "2026-04-18 20:17",
+    "success": true,
+    "source": "autohome",
+    "provinces": 31
+  }
+}
