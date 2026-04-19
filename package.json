@@ -10,6 +10,12 @@
     "server": "node server/api.cjs"
   },
   "dependencies": {
+    "@tarojs/components": "^4.2.0",
+    "@tarojs/plugin-platform-weapp": "^4.2.0",
+    "@tarojs/react": "^4.2.0",
+    "@tarojs/runtime": "^4.2.0",
+    "@tarojs/taro": "^4.2.0",
+    "@tarojs/taro-h5": "^4.2.0",
     "axios": "^1.6.2",
     "better-sqlite3": "^9.2.2",
     "cors": "^2.8.5",
@@ -23,6 +29,7 @@
     "sqlite3": "^6.0.1"
   },
   "devDependencies": {
+    "@tarojs/cli": "^3.6.40",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.32",

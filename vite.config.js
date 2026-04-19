@@ -10,6 +10,7 @@ export default defineConfig({
   server: {
     port: 5174,
     host: true,
+    allowedHosts: ['.lhr.life', 'tony-oil-price.loca.lt'],
     proxy: {
       '/api': {
         target: 'http://localhost:3000',

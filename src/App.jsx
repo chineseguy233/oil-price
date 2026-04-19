@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import * as echarts from 'echarts'
 import StationsPage from './pages/StationsPage'
+import { autoLocate } from './utils/geolocation'
 
 const API_BASE = '/api'
 
@@ -18,12 +20,10 @@ const OIL_COLORS = { '92': '#3b82f6', '95': '#8b5cf6', '98': '#f59e0b', '0': '#1
 const AD_BANNER_SLOT = 'home_top_banner'
 const AD_LIST_SLOT = 'province_list_item'
 
-// 模拟广告数据（实际接入时可替换为真实广告SDK）
+// 模拟广告数据
 function AdBanner({ slot, style }) {
   const [ad, setAd] = useState(null)
   useEffect(() => {
-    // TODO: 接入真实广告SDK（如穿山甲、广点通等）
-    // 暂时显示占位，保留广告位
     setAd({ title: '广告位招租', sub: '汽车服务·品牌推广', link: '#' })
   }, [slot])
   if (!ad) return null
@@ -47,7 +47,6 @@ function AdBanner({ slot, style }) {
 // 省油价列表项（带广告位）
 function ProvinceRow({ region, price, oilType, index }) {
   const [ad] = useState(() => {
-    // 每5条插入一个广告位
     return index > 0 && index % 5 === 0
       ? { title: '精选服务', sub: '广告', color: '#f59e0b' }
       : null
@@ -96,7 +95,7 @@ function ProvinceRow({ region, price, oilType, index }) {
 }
 
 // ========== 油价页面 ==========
-function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelectedRegion, oilData, regions, updateTime }) {
+function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelectedRegion, oilData, regions, updateTime, hoursOld }) {
   const [showAdBanner, setShowAdBanner] = useState(true)
 
   if (!oilData) {
@@ -110,6 +109,7 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
 
   const currentPrice = oilData[selectedRegion]?.[selectedOil] ?? '—'
   const oilColor = OIL_COLORS[selectedOil]
+  const isStale = hoursOld !== null && hoursOld >= 24
 
   return (
     <div style={{ paddingBottom: '80px' }}>
@@ -135,9 +135,22 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
-              今日油价 · {selectedRegion}
-              {updateTime && <span style={{ marginLeft: 6, fontSize: '12px' }}>({updateTime})</span>}
+            <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>今日油价 · {selectedRegion}</span>
+              {updateTime && <span style={{ fontSize: '12px' }}>({updateTime})</span>}
+              {/* 数据新鲜度指示 */}
+              {hoursOld !== null && (
+                <span style={{
+                  fontSize: '11px',
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  background: isStale ? '#fef2f2' : '#f0fdf4',
+                  color: isStale ? '#ef4444' : '#10b981',
+                  fontWeight: '600',
+                }}>
+                  {hoursOld < 1 ? '刚刚更新' : isStale ? `⚠️ ${hoursOld.toFixed(0)}h前` : `${hoursOld.toFixed(0)}h前`}
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
               <span style={{ fontSize: '44px', fontWeight: 'bold', color: oilColor, lineHeight: 1 }}>{currentPrice}</span>
@@ -165,7 +178,13 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <select
             value={selectedRegion}
-            onChange={e => setSelectedRegion(e.target.value)}
+            onChange={e => {
+              setSelectedRegion(e.target.value)
+              // 记录最近访问
+              const recent = JSON.parse(localStorage.getItem('recent_provinces') || '[]')
+              const updated = [e.target.value, ...recent.filter(r => r !== e.target.value)].slice(0, 3)
+              localStorage.setItem('recent_provinces', JSON.stringify(updated))
+            }}
             style={{
               flex: 1,
               padding: '10px 12px',
@@ -258,16 +277,19 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
   )
 }
 
-// ========== 趋势页面 ==========
+// ========== 趋势页面（点击显示详情）============
 function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
   const [trendData, setTrendData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [days, setDays] = useState(7)
+  const [selectedPoint, setSelectedPoint] = useState(null) // { date, values }
   const chartRef = useRef(null)
   const chartInstance = useRef(null)
+  const [echartsReady] = useState(true)
 
   const load = useCallback(() => {
     setLoading(true)
+    setSelectedPoint(null)
     fetch(`${API_BASE}/price-changes?province=${encodeURIComponent(selectedRegion)}&days=${days}`)
       .then(r => r.json())
       .then(d => { setTrendData(d); setLoading(false) })
@@ -279,14 +301,13 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
   // 初始化和更新图表
   useEffect(() => {
     if (!chartRef.current) return
-    if (!window.echarts) return
+    if (!echartsReady) return
 
     const history = trendData?.history || {}
     const dates = Object.keys(history).sort()
     const hasData = dates.length > 0
 
     if (!hasData || loading) {
-      // 销毁图表实例
       if (chartInstance.current) {
         chartInstance.current.dispose()
         chartInstance.current = null
@@ -294,7 +315,6 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
       return
     }
 
-    // 配置图表数据
     const series = OIL_TYPES.map(oil => ({
       name: oil.label,
       type: 'line',
@@ -364,13 +384,24 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
     if (chartInstance.current) {
       chartInstance.current.setOption(option, true)
     } else {
-      chartInstance.current = window.echarts.init(chartRef.current)
+      chartInstance.current = echarts.init(chartRef.current)
       chartInstance.current.setOption(option, true)
     }
 
-    return () => {
-      // 清理（不销毁，保留实例以便复用）
-    }
+    // 点击事件：记录选中的点
+    chartInstance.current.off('click')
+    chartInstance.current.on('click', (params) => {
+      if (params.componentType === 'series') {
+        const date = params.name
+        const history = trendData?.history || {}
+        setSelectedPoint({
+          date,
+          values: history[date] || {}
+        })
+      }
+    })
+
+    return () => {}
   }, [trendData, loading, selectedRegion])
 
   // 响应式 resize
@@ -428,10 +459,49 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
 
       {/* 趋势图表 */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0' }}>加载中...</div>
+        {loading || !echartsReady ? (
+          <div style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0' }}>
+            {!echartsReady ? '加载图表组件...' : '加载中...'}
+          </div>
         ) : trendData && Object.keys(trendData.history || {}).length > 0 ? (
-          <div ref={chartRef} style={{ width: '100%', height: '300px' }} />
+          <>
+            <div ref={chartRef} style={{ width: '100%', height: '300px' }} />
+            {/* 点击数据点详情 */}
+            {selectedPoint && (
+              <div style={{
+                marginTop: '12px',
+                padding: '12px 16px',
+                background: '#f9fafb',
+                borderRadius: '12px',
+                fontSize: '13px',
+              }}>
+                <div style={{ fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
+                  📅 {selectedPoint.date} 油价详情
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                  {OIL_TYPES.map(t => {
+                    const val = selectedPoint.values[t.key]
+                    return val != null ? (
+                      <div key={t.key} style={{
+                        padding: '8px 12px',
+                        background: 'white',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}>
+                        <span style={{ color: t.color, fontWeight: '600' }}>{t.label}</span>
+                        <span style={{ fontWeight: 'bold', color: '#1f2937' }}>¥{val}元/升</span>
+                      </div>
+                    ) : null
+                  })}
+                </div>
+                {Object.keys(selectedPoint.values).length === 0 && (
+                  <div style={{ color: '#9ca3af', textAlign: 'center', padding: '8px' }}>当日无数据</div>
+                )}
+              </div>
+            )}
+          </>
         ) : (
           <div style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0', fontSize: '14px' }}>
             暂无历史数据，请先等待爬虫运行几天积累数据
@@ -492,8 +562,7 @@ function FuelPage() {
             const consumption = ((parseFloat(form.amount) / parseFloat(form.distance)) * 100).toFixed(2)
             setRecords(r => [{ date: form.date, distance: form.distance, amount: form.amount, price: form.price, consumption }, ...r])
             setForm({ date: '', distance: '', amount: '', price: '' })
-          }}
-        >
+          }}>
           + 添加记录
         </button>
       </div>
@@ -545,7 +614,6 @@ function MyPage() {
     }).catch(() => {})
   }, [])
 
-  // 加载提醒设置
   const loadReminders = () => {
     fetch(`${API_BASE}/remind`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` } })
       .then(r => r.json())
@@ -553,13 +621,11 @@ function MyPage() {
       .catch(() => {})
   }
 
-  // 打开提醒弹窗时加载数据
   const openRemindModal = () => {
     loadReminders()
     setShowRemindModal(true)
   }
 
-  // 添加提醒
   const addReminder = () => {
     const token = localStorage.getItem('token')
     if (!token) return alert('请先登录')
@@ -577,7 +643,6 @@ function MyPage() {
     }).catch(() => alert('设置失败'))
   }
 
-  // 删除提醒
   const deleteReminder = (id) => {
     const token = localStorage.getItem('token')
     if (!token) return
@@ -747,6 +812,9 @@ export default function App() {
   const [oilData, setOilData] = useState(null)
   const [updateTime, setUpdateTime] = useState('')
   const [regions, setRegions] = useState(['北京', '上海', '广东', '江苏', '浙江'])
+  const [hoursOld, setHoursOld] = useState(null) // 数据新鲜度
+  // 定位状态：{ source, accuracy, message }
+  const [locInfo, setLocInfo] = useState(null)
 
   // 加载油价数据
   useEffect(() => {
@@ -757,12 +825,66 @@ export default function App() {
           setOilData(d.prices)
           setRegions(Object.keys(d.prices))
           setUpdateTime(d.update_time || '')
+          // 计算数据新鲜度
+          if (d.fetched_at) {
+            const fetched = new Date(d.fetched_at)
+            const now = new Date()
+            setHoursOld(((now - fetched) / 3600000))
+          }
           const first = Object.keys(d.prices)[0]
           if (first) setSelectedRegion(first)
         }
       })
       .catch(console.error)
   }, [])
+
+  // 启动时自动定位
+  useEffect(() => {
+    if (!oilData) return
+
+    // 先看有没有记住的省份
+    const savedProvince = localStorage.getItem('auto_province')
+    if (savedProvince && oilData[savedProvince]) {
+      setSelectedRegion(savedProvince)
+      return
+    }
+
+    if (!navigator.geolocation) {
+      setLocInfo({ source: 'none', accuracy: 'none', message: '浏览器不支持定位' })
+      return
+    }
+
+    autoLocate()
+      .then(loc => {
+        setLocInfo({
+          source: loc.source,
+          accuracy: loc.accuracy,
+          message: loc.message,
+        })
+        // 匹配省份
+        const matched = Object.keys(oilData).find(p =>
+          p.includes(loc.province.replace(/[省市]$/, '')) ||
+          loc.province.includes(p)
+        )
+        if (matched) {
+          setSelectedRegion(matched)
+          localStorage.setItem('auto_province', matched)
+        }
+      })
+      .catch((e) => {
+        setLocInfo({ source: 'error', accuracy: 'none', message: e.message || '定位失败' })
+      })
+  }, [oilData])
+
+  // 省份切换时自动记住
+  const handleRegionChange = (region) => {
+    setSelectedRegion(region)
+    localStorage.setItem('auto_province', region)
+    // 记录最近访问
+    const recent = JSON.parse(localStorage.getItem('recent_provinces') || '[]')
+    const updated = [region, ...recent.filter(r => r !== region)].slice(0, 3)
+    localStorage.setItem('recent_provinces', JSON.stringify(updated))
+  }
 
   const TABS = [
     { id: 'price', name: '油价', icon: '⛽' },
@@ -795,6 +917,25 @@ export default function App() {
             {updateTime}
           </span>
         )}
+        {/* 定位状态标签 - 改进版 */}
+        {locInfo && (
+          <span style={{
+            fontSize: '11px',
+            color: locInfo.source === 'gps' ? '#10b981' : locInfo.source === 'ip' ? '#f59e0b' : locInfo.source === 'error' || locInfo.source === 'none' ? '#ef4444' : '#2563eb',
+            background: locInfo.source === 'gps' ? '#f0fdf4' : locInfo.source === 'ip' ? '#fffbeb' : locInfo.source === 'error' || locInfo.source === 'none' ? '#fef2f2' : '#eff6ff',
+            padding: '3px 8px',
+            borderRadius: '10px',
+            maxWidth: '120px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+            title={locInfo.message}
+          >
+            {locInfo.source === 'gps' ? '🛰 GPS' : locInfo.source === 'ip' ? '🌐 网络定位' : locInfo.source === 'error' || locInfo.source === 'none' ? '⚠️ 定位' : '📍'}
+            {locInfo.accuracy === 'low' ? ' ⚠️' : ''}
+          </span>
+        )}
       </div>
 
       {/* 页面内容 */}
@@ -802,8 +943,9 @@ export default function App() {
         {tab === 'price' && (
           <OilPricePage
             selectedOil={selectedOil} setSelectedOil={setSelectedOil}
-            selectedRegion={selectedRegion} setSelectedRegion={setSelectedRegion}
+            selectedRegion={selectedRegion} setSelectedRegion={handleRegionChange}
             oilData={oilData} regions={regions} updateTime={updateTime}
+            hoursOld={hoursOld}
           />
         )}
         {tab === 'trend' && (
