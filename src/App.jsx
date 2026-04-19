@@ -188,29 +188,6 @@ const OIL_TYPES = [
 // 油号选择器颜色
 const OIL_COLORS = { '92': '#3b82f6', '95': '#8b5cf6', '98': '#f59e0b', '0': '#10b981' }
 
-// 广告位配置
-const AD_BANNER_SLOT = 'home_top_banner'
-const AD_LIST_SLOT = 'province_list_item'
-
-// 广告 Banner 占位
-function AdBanner({ slot, style }) {
-  return (
-    <div style={{
-      margin: '12px 16px',
-      padding: '20px',
-      background: '#f9fafb',
-      borderRadius: '12px',
-      border: '1px dashed #e5e7eb',
-      textAlign: 'center',
-      color: '#9ca3af',
-      fontSize: '12px',
-      ...style,
-    }}>
-      广告位: {slot}
-    </div>
-  )
-}
-
 // 实用信息 Banner
 function InfoBanner({ style }) {
   const tips = [
@@ -1201,15 +1178,60 @@ function FuelPage() {
   )
 }
 
+// ========== 相邻省份映射（用于提醒监控范围）============
+const NEIGHBOR_MAP = {
+  '北京': ['河北', '天津'],
+  '天津': ['北京', '河北'],
+  '河北': ['北京', '天津', '山东', '河南', '山西', '内蒙古', '辽宁'],
+  '山西': ['河北', '河南', '陕西'],
+  '内蒙古': ['河北', '山西', '陕西', '宁夏', '甘肃', '黑龙江', '吉林', '辽宁'],
+  '辽宁': ['内蒙古', '吉林', '河北'],
+  '吉林': ['内蒙古', '辽宁', '黑龙江'],
+  '黑龙江': ['内蒙古', '吉林'],
+  '上海': ['江苏', '浙江'],
+  '江苏': ['上海', '浙江', '安徽', '山东'],
+  '浙江': ['上海', '江苏', '安徽', '福建', '江西'],
+  '安徽': ['江苏', '浙江', '江西', '湖北', '河南', '山东'],
+  '福建': ['浙江', '江西', '广东'],
+  '江西': ['浙江', '安徽', '福建', '广东', '湖南', '湖北'],
+  '山东': ['河北', '江苏', '安徽', '河南', '山西'],
+  '河南': ['河北', '山东', '安徽', '湖北', '陕西', '山西'],
+  '湖北': ['安徽', '江西', '湖南', '重庆', '陕西', '河南'],
+  '湖南': ['江西', '湖北', '广东', '广西', '贵州'],
+  '广东': ['福建', '江西', '湖南', '广西', '海南'],
+  '广西': ['广东', '湖南', '贵州', '云南'],
+  '海南': ['广东'],
+  '重庆': ['湖北', '四川', '贵州', '陕西'],
+  '四川': ['重庆', '云南', '贵州', '陕西', '甘肃', '青海', '西藏'],
+  '贵州': ['重庆', '四川', '云南', '广西', '湖南', '江西'],
+  '云南': ['四川', '贵州', '广西'],
+  '西藏': ['四川', '青海'],
+  '陕西': ['山西', '河南', '湖北', '重庆', '四川', '甘肃', '宁夏', '内蒙古'],
+  '甘肃': ['陕西', '四川', '青海', '宁夏', '内蒙古', '新疆'],
+  '青海': ['四川', '西藏', '甘肃', '新疆'],
+  '宁夏': ['内蒙古', '甘肃', '陕西'],
+  '新疆': ['甘肃', '青海'],
+}
+
+// 获取监控省份列表（主省 + 最多2个邻居）
+function getMonitorProvinces(mainProvince) {
+  const neighbors = NEIGHBOR_MAP[mainProvince] || []
+  return [mainProvince, ...neighbors.slice(0, 2)]
+}
+
 // ========== 我的页面 ==========
-function MyPage() {
+function MyPage({ selectedRegion }) {
   const [health, setHealth] = useState(null)
   const [showRemindModal, setShowRemindModal] = useState(false)
-  const [reminders, setReminders] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('oil_reminders') || '[]') } catch { return [] }
-  })
-  const [remindForm, setRemindForm] = useState({ province: '北京', oilType: '92', threshold: '0.1' })
   const [regions, setRegions] = useState(['北京', '上海', '广东', '江苏', '浙江'])
+  const [historyData, setHistoryData] = useState(null) // 历史油价数据
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
+  // 提醒配置（自动判断阈值，无需用户设定）
+  const [remindConfig, setRemindConfig] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('oil_remind_config') || 'null') } catch { return null }
+  })
+  const [configForm, setConfigForm] = useState({ province: '北京', oilType: '92' })
 
   useEffect(() => {
     fetch(`${API_BASE}/health`).then(r => r.json()).then(setHealth).catch(() => {})
@@ -1218,23 +1240,49 @@ function MyPage() {
     }).catch(() => {})
   }, [])
 
+  // 加载历史数据用于计算30天最低/最高价
+  const loadHistory = useCallback(() => {
+    setLoadingHistory(true)
+    fetch(`${API_BASE}/price-changes?province=${encodeURIComponent(configForm.province)}&days=30`)
+      .then(r => r.json())
+      .then(d => { if (d.changes) setHistoryData(d.changes) })
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false))
+  }, [configForm.province])
+
+  useEffect(() => {
+    if (showRemindModal) loadHistory()
+  }, [showRemindModal, loadHistory])
+
   const openRemindModal = () => {
+    if (!remindConfig) {
+      setConfigForm({ province: selectedRegion || '北京', oilType: '92' })
+    } else {
+      setConfigForm({ province: remindConfig.province, oilType: remindConfig.oilType })
+    }
     setShowRemindModal(true)
   }
 
-  const addReminder = () => {
-    const newRemind = { ...remindForm, id: Date.now().toString() }
-    const updated = [...reminders, newRemind]
-    setReminders(updated)
-    localStorage.setItem('oil_reminders', JSON.stringify(updated))
-    setRemindForm({ province: '北京', oilType: '92', threshold: '0.1' })
+  const saveRemindConfig = () => {
+    const cfg = { ...configForm, enabled: true }
+    setRemindConfig(cfg)
+    localStorage.setItem('oil_remind_config', JSON.stringify(cfg))
+    setShowRemindModal(false)
   }
 
-  const deleteReminder = (id) => {
-    const updated = reminders.filter(r => r.id !== id)
-    setReminders(updated)
-    localStorage.setItem('oil_reminders', JSON.stringify(updated))
+  const clearRemindConfig = () => {
+    setRemindConfig(null)
+    localStorage.removeItem('oil_remind_config')
   }
+
+  // 计算当前油号的30天最低/最高价
+  const priceStats = useMemo(() => {
+    if (!historyData || !configForm.oilType) return null
+    const oilKey = configForm.oilType
+    const prices = historyData.map(d => d[oilKey]).filter(p => p != null)
+    if (prices.length === 0) return null
+    return { min: Math.min(...prices), max: Math.max(...prices), current: prices[0], count: prices.length }
+  }, [historyData, configForm.oilType])
 
   const MenuItem = ({ icon, label, value, onClick, status }) => (
     <div
@@ -1288,10 +1336,10 @@ function MyPage() {
 
       {/* 功能菜单 */}
       <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-        <MenuItem icon="🔔" label="油价提醒" value={reminders.length > 0 ? `${reminders.length}个` : '未设置'} onClick={openRemindModal} />
+        <MenuItem icon="🔔" label="油价提醒" value={remindConfig ? `${remindConfig.province} ${OIL_TYPES.find(t => t.key === remindConfig.oilType)?.label}` : '未设置'} onClick={openRemindModal} />
       </div>
 
-      {/* 油价提醒弹窗 */}
+      {/* 油价提醒弹窗（系统自动判断阈值） */}
       {showRemindModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -1303,63 +1351,105 @@ function MyPage() {
             maxHeight: '80vh', overflow: 'auto', padding: '20px'
           }} onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', textAlign: 'center' }}>
-              油价提醒设置
+              油价提醒
             </div>
 
-            {/* 添加提醒表单 */}
+            {/* 说明 */}
+            <div style={{ background: '#f0fdf4', borderRadius: '10px', padding: '12px', marginBottom: '16px', fontSize: '13px', color: '#166534', lineHeight: 1.5 }}>
+              系统自动监控油价，降价到30天最低价时推送「降价提醒」，涨到30天最高价时推送「涨价提醒」
+            </div>
+
+            {/* 省份 + 油号选择 */}
             <div style={{ background: '#f9fafb', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>省份</label>
-                <select value={remindForm.province} onChange={e => setRemindForm({...remindForm, province: e.target.value})}
+                <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>监控省份</label>
+                <select value={configForm.province} onChange={e => setConfigForm({...configForm, province: e.target.value})}
                   style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px' }}>
                   {regions.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
               <div style={{ marginBottom: '12px' }}>
                 <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>油号</label>
-                <select value={remindForm.oilType} onChange={e => setRemindForm({...remindForm, oilType: e.target.value})}
+                <select value={configForm.oilType} onChange={e => setConfigForm({...configForm, oilType: e.target.value})}
                   style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px' }}>
                   {OIL_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
                 </select>
               </div>
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>涨价阈值（元/升）</label>
-                <input type="number" step="0.05" min="0.05" value={remindForm.threshold}
-                  onChange={e => setRemindForm({...remindForm, threshold: e.target.value})}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px' }} />
-              </div>
-              <button onClick={addReminder}
-                style={{ width: '100%', padding: '10px', background: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
-                添加提醒
-              </button>
             </div>
 
-            {/* 已有提醒列表 */}
-            <div>
-              <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}>已设置的提醒（{reminders.length}个）</div>
-              {reminders.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af', fontSize: '13px' }}>暂无提醒设置</div>
-              )}
-              {reminders.map(r => (
-                <div key={r.id} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '10px 12px', background: '#fff', border: '1px solid #e5e7eb',
-                  borderRadius: '8px', marginBottom: '8px'
-                }}>
-                  <div>
-                    <div style={{ fontSize: '14px', color: '#374151' }}>{r.province} {OIL_TYPES.find(t => t.key === r.oilType)?.label}</div>
-                    <div style={{ fontSize: '12px', color: '#9ca3af' }}>涨幅超 {r.threshold}元/升</div>
-                  </div>
-                  <button onClick={() => deleteReminder(r.id)}
-                    style={{ padding: '4px 12px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
-                    删除
-                  </button>
+            {/* 监控范围预览 */}
+            {configForm.province && (
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '6px' }}>监控范围（共3个省份）</div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {getMonitorProvinces(configForm.province).map(p => (
+                    <span key={p} style={{
+                      padding: '4px 10px', borderRadius: '20px', fontSize: '12px',
+                      background: p === configForm.province ? '#dbeafe' : '#f3f4f6',
+                      color: p === configForm.province ? '#1e40af' : '#374151',
+                      fontWeight: p === configForm.province ? '600' : '400',
+                    }}>{p}</span>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            {/* 30天价格区间 */}
+            {loadingHistory ? (
+              <div style={{ textAlign: 'center', padding: '16px', color: '#9ca3af', fontSize: '13px' }}>加载历史数据中...</div>
+            ) : priceStats ? (
+              <div style={{ background: '#fafafa', borderRadius: '10px', padding: '12px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '8px' }}>近30天价格区间（{priceStats.count}天数据）</div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{ flex: 1, textAlign: 'center', background: '#f0fdf4', borderRadius: '8px', padding: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#6b7280' }}>最低价</div>
+                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#15803d' }}>{priceStats.min}</div>
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'center', background: '#fef2f2', borderRadius: '8px', padding: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#6b7280' }}>当前价</div>
+                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#dc2626' }}>{priceStats.current}</div>
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'center', background: '#fff7ed', borderRadius: '8px', padding: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#6b7280' }}>最高价</div>
+                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#c2410c' }}>{priceStats.max}</div>
+                  </div>
+                </div>
+                {/* 提示当前处于什么区间 */}
+                {priceStats.current === priceStats.min && (
+                  <div style={{ marginTop: '8px', textAlign: 'center', fontSize: '12px', color: '#15803d', fontWeight: '600' }}>📉 当前处于30天最低价，适合加油！</div>
+                )}
+                {priceStats.current === priceStats.max && (
+                  <div style={{ marginTop: '8px', textAlign: 'center', fontSize: '12px', color: '#dc2626', fontWeight: '600' }}>📈 当前处于30天最高价，谨慎加油</div>
+                )}
+                {priceStats.current !== priceStats.min && priceStats.current !== priceStats.max && (
+                  <div style={{ marginTop: '8px', textAlign: 'center', fontSize: '12px', color: '#6b7280' }}>处于正常区间，关注即可</div>
+                )}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '16px', color: '#9ca3af', fontSize: '13px', marginBottom: '16px' }}>暂无30天历史数据</div>
+            )}
+
+            {/* 按钮 */}
+            {remindConfig ? (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={clearRemindConfig}
+                  style={{ flex: 1, padding: '10px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
+                  取消提醒
+                </button>
+                <button onClick={saveRemindConfig}
+                  style={{ flex: 1, padding: '10px', background: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
+                  保存修改
+                </button>
+              </div>
+            ) : (
+              <button onClick={saveRemindConfig} disabled={!priceStats}
+                style={{ width: '100%', padding: '10px', background: priceStats ? '#10b981' : '#9ca3af', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: priceStats ? 'pointer' : 'not-allowed' }}>
+                开启油价提醒
+              </button>
+            )}
 
             <button onClick={() => setShowRemindModal(false)}
-              style={{ width: '100%', marginTop: '12px', padding: '10px', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
+              style={{ width: '100%', marginTop: '8px', padding: '10px', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
               关闭
             </button>
           </div>
@@ -1638,7 +1728,7 @@ export default function App({ onGotoTrip, onGotoRankings }) {
             regions={regions}
           />
         )}
-        {tab === 'my' && <MyPage />}
+        {tab === 'my' && <MyPage selectedRegion={selectedRegion} />}
       </div>
 
       {/* 定位省份联动 Toast */}
