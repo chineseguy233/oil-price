@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import * as echarts from 'echarts'
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import StationsPage from './pages/StationsPage'
 import TripPage from './pages/TripPage'
 import { autoLocate } from './utils/geolocation'
+import { VehicleManager } from './components/VehicleComponents'
+import { getSelectedVehicleId, getFuelRecords, addFuelRecord, deleteFuelRecord, updateFuelRecord, getVehicles, recalcVehicleConsumption } from './utils/vehicles'
 
 // ========== 省份选择器（带搜索）============
 function ProvinceSelector({ value, onChange, provinces }) {
@@ -790,33 +792,109 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
 
 // ========== 油耗页面 ==========
 function FuelPage() {
-  const [records, setRecords] = useState([])
+  const [records, setRecords] = useState(getFuelRecords)
+  const [filterVehicleId, setFilterVehicleId] = useState('') // 筛选查看的车辆，为空=全部
+  const [selectedVehicleId, setSelectedVehicleId] = useState(getSelectedVehicleId) // 新增记录绑定的车辆
   const [form, setForm] = useState({ date: '', distance: '', amount: '', price: '' })
+  const [editingRecord, setEditingRecord] = useState(null) // 当前编辑的记录
+  const [formErrors, setFormErrors] = useState({}) // 表单错误提示
   const fuelChartRef = useRef(null)
   const fuelChartInstance = useRef(null)
 
+  // 当前绑定车辆的已有记录中最大里程（用于校验里程不能倒填）
+  const maxDistanceForSelectedVehicle = useMemo(() => {
+    if (!selectedVehicleId) return 0
+    const recs = records.filter(r => r.vehicleId === selectedVehicleId)
+    if (recs.length === 0) return 0
+    return Math.max(...recs.map(r => parseFloat(r.distance) || 0))
+  }, [records, selectedVehicleId])
+
+  // 计算油价（元/升）
+  const computedPricePerL = useMemo(() => {
+    const amt = parseFloat(form.amount)
+    const prc = parseFloat(form.price)
+    if (!amt || !prc || amt <= 0) return null
+    return (prc / amt).toFixed(2)
+  }, [form.amount, form.price])
+
+  // 校验表单
+  const validateForm = () => {
+    const errs = {}
+    const today = new Date().toISOString().split('T')[0]
+    const amt = parseFloat(form.amount)
+    const dist = parseFloat(form.distance)
+    const prc = parseFloat(form.price)
+
+    if (!selectedVehicleId) {
+      errs.vehicle = '请先选择绑定车辆'
+    }
+    if (!form.date) {
+      errs.date = '请选择日期'
+    } else if (form.date > today) {
+      errs.date = '日期不能超过今天'
+    }
+    if (!form.distance) {
+      errs.distance = '请填写里程'
+    } else if (dist < 0) {
+      errs.distance = '里程不能为负'
+    } else if (maxDistanceForSelectedVehicle > 0 && dist < maxDistanceForSelectedVehicle) {
+      errs.distance = `里程不能小于该车上次记录的 ${maxDistanceForSelectedVehicle} km`
+    }
+    if (!form.amount) {
+      errs.amount = '请填写油量'
+    } else if (amt < 1) {
+      errs.amount = '油量至少 1 升'
+    } else if (amt > 200) {
+      errs.amount = '油量过大，请核实'
+    }
+    if (!form.price) {
+      errs.price = '请填写油费'
+    } else if (computedPricePerL !== null) {
+      const p = parseFloat(computedPricePerL)
+      if (p < 3 || p > 15) {
+        errs.price = `油价 ${p} 元/升 偏离正常范围（3~15元）`
+      }
+    }
+    setFormErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  // 清空表单时同步清空错误
+  const clearForm = () => {
+    setForm({ date: '', distance: '', amount: '', price: '' })
+    setFormErrors({})
+  }
+
+  // 当前筛选条件下的记录（按日期升序排序）
+  const filteredRecords = (filterVehicleId
+    ? records.filter(r => r.vehicleId === filterVehicleId)
+    : records).sort((a, b) => new Date(a.date) - new Date(b.date))
+
   // 计算统计数据
   const calcFuelStats = () => {
-    if (records.length === 0) return null
-    let totalFuel = 0, totalKm = 0, totalCost = 0
-    records.forEach(r => {
+    const recs = filteredRecords
+    if (recs.length === 0) return null
+    let totalFuel = 0, totalCost = 0
+    recs.forEach(r => {
       totalFuel += parseFloat(r.amount) || 0
-      totalKm += parseFloat(r.distance) || 0
       totalCost += parseFloat(r.price) || 0
     })
+    // 里程是仪表盘累计读数，累计行驶 = 最后一条记录的里程
+    const lastRecord = recs.length > 0 ? recs[recs.length - 1] : null
+    const totalKm = lastRecord ? (parseFloat(lastRecord.distance) || 0) : 0
     const avgConsumption = totalKm > 0 ? (totalFuel / totalKm * 100).toFixed(1) : '--'
-    const avgCostPerRecord = records.length > 0 ? (totalCost / records.length).toFixed(0) : '--'
-    return { totalRecords: records.length, totalKm, totalFuel: totalFuel.toFixed(1), totalCost: totalCost.toFixed(0), avgConsumption, avgCostPerRecord }
+    const avgCostPerRecord = recs.length > 0 ? (totalCost / recs.length).toFixed(0) : '--'
+    return { totalRecords: recs.length, totalKm, totalFuel: totalFuel.toFixed(1), totalCost: totalCost.toFixed(0), avgConsumption, avgCostPerRecord }
   }
 
   // 渲染油耗曲线
   useEffect(() => {
-    if (!fuelChartRef.current || records.length < 2) return
+    if (!fuelChartRef.current || filteredRecords.length < 2) return
     if (fuelChartInstance.current) {
       fuelChartInstance.current.dispose()
       fuelChartInstance.current = null
     }
-    const validRecords = records.slice().reverse()
+    const validRecords = filteredRecords
     const dates = validRecords.map(r => r.date)
     const consumptions = validRecords.map(r => parseFloat(r.consumption) || 0)
 
@@ -854,7 +932,7 @@ function FuelPage() {
     fuelChartInstance.current = echarts.init(fuelChartRef.current)
     fuelChartInstance.current.setOption(option, true)
     return () => {}
-  }, [records])
+  }, [filteredRecords])
 
   // 响应式
   useEffect(() => {
@@ -867,6 +945,25 @@ function FuelPage() {
 
   return (
     <div style={{ padding: '16px', paddingBottom: '80px' }}>
+      {/* 油耗记录选择器 - 页面顶部，筛选查看的车辆 */}
+      <div style={{ marginBottom: '12px' }}>
+        <select
+          value={filterVehicleId}
+          onChange={e => setFilterVehicleId(e.target.value)}
+          style={{
+            width: '100%', padding: '10px 12px',
+            borderRadius: '10px', border: '1px solid #e5e7eb',
+            fontSize: '14px', color: '#374151', background: '#f9fafb',
+            boxSizing: 'border-box', outline: 'none',
+          }}
+        >
+          <option value="">油耗记录（全部车辆）</option>
+          {getVehicles().map(v => (
+            <option key={v.id} value={v.id}>{v.name}（{v.oilType}#）</option>
+          ))}
+        </select>
+      </div>
+
       {/* 统计卡片 */}
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
@@ -894,7 +991,7 @@ function FuelPage() {
       )}
 
       {/* 油耗历史曲线 */}
-      {records.length >= 2 && (
+      {filteredRecords.length >= 2 && (
         <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#374151', marginBottom: '12px' }}>📈 油耗曲线</div>
           <div ref={fuelChartRef} style={{ width: '100%', height: '200px' }} />
@@ -902,74 +999,198 @@ function FuelPage() {
       )}
 
       <div style={{ background: 'white', borderRadius: '16px', padding: '20px', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-        <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', color: '#374151' }}>📊 加油记录</div>
+        <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', color: '#374151' }}>📝 添加加油记录</div>
+
+        {/* 绑定车辆 */}
+        <div style={{ marginBottom: '12px' }}>
+          <select
+            value={selectedVehicleId || ''}
+            onChange={e => {
+              const val = e.target.value
+              if (!val) return
+              setSelectedVehicleId(val)
+            }}
+            style={{
+              width: '100%', padding: '10px 12px',
+              borderRadius: '10px',
+              border: `1px solid ${formErrors.vehicle ? '#ef4444' : '#e5e7eb'}`,
+              fontSize: '14px', color: '#374151', background: '#f9fafb',
+              boxSizing: 'border-box', outline: 'none',
+            }}
+          >
+            <option value="" disabled>选择车辆（必选）</option>
+            {getVehicles().map(v => (
+              <option key={v.id} value={v.id}>{v.name}（{v.oilType}#）</option>
+            ))}
+          </select>
+          {formErrors.vehicle && <div style={{ fontSize: '12px', color: '#ef4444', marginTop: '4px' }}>{formErrors.vehicle}</div>}
+        </div>
+
         {/* 录入表单 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+        <div style={{ marginBottom: '8px' }}>
           <input
             type="date"
             value={form.date}
-            onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-            style={{ padding: '10px 12px', borderRadius: '10px', border: '1px solid #e5e7eb', fontSize: '14px' }}
+            max={new Date().toISOString().split('T')[0]}
+            onChange={e => { setForm(f => ({ ...f, date: e.target.value })); setFormErrors(err => ({ ...err, date: '' })) }}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${formErrors.date ? '#ef4444' : '#e5e7eb'}`, fontSize: '14px', boxSizing: 'border-box', outline: 'none' }}
           />
-          <input
-            type="number"
-            placeholder="里程 (km)"
-            value={form.distance}
-            onChange={e => setForm(f => ({ ...f, distance: e.target.value }))}
-            style={{ padding: '10px 12px', borderRadius: '10px', border: '1px solid #e5e7eb', fontSize: '14px' }}
-          />
-          <input
-            type="number"
-            placeholder="油量 (L)"
-            value={form.amount}
-            onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-            style={{ padding: '10px 12px', borderRadius: '10px', border: '1px solid #e5e7eb', fontSize: '14px' }}
-          />
-          <input
-            type="number"
-            placeholder="油费 (元)"
-            value={form.price}
-            onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
-            style={{ padding: '10px 12px', borderRadius: '10px', border: '1px solid #e5e7eb', fontSize: '14px' }}
-          />
+          {formErrors.date && <div style={{ fontSize: '12px', color: '#ef4444', marginTop: '4px' }}>{formErrors.date}</div>}
         </div>
+        <div style={{ marginBottom: '8px' }}>
+          <input
+            type="number"
+            placeholder={`里程 (km)，该车最大记录 ${maxDistanceForSelectedVehicle > 0 ? maxDistanceForSelectedVehicle + ' km' : '无'}`}
+            value={form.distance}
+            onChange={e => { setForm(f => ({ ...f, distance: e.target.value })); setFormErrors(err => ({ ...err, distance: '' })) }}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${formErrors.distance ? '#ef4444' : '#e5e7eb'}`, fontSize: '14px', boxSizing: 'border-box', outline: 'none' }}
+          />
+          {formErrors.distance && <div style={{ fontSize: '12px', color: '#ef4444', marginTop: '4px' }}>{formErrors.distance}</div>}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '8px' }}>
+          <div>
+            <input
+              type="number"
+              placeholder="油量 (L)"
+              value={form.amount}
+              onChange={e => { setForm(f => ({ ...f, amount: e.target.value })); setFormErrors(err => ({ ...err, amount: '' })) }}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${formErrors.amount ? '#ef4444' : '#e5e7eb'}`, fontSize: '14px', boxSizing: 'border-box', outline: 'none' }}
+            />
+            {formErrors.amount && <div style={{ fontSize: '12px', color: '#ef4444', marginTop: '4px' }}>{formErrors.amount}</div>}
+          </div>
+          <div>
+            <input
+              type="number"
+              placeholder="油费 (元)"
+              value={form.price}
+              onChange={e => { setForm(f => ({ ...f, price: e.target.value })); setFormErrors(err => ({ ...err, price: '' })) }}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${formErrors.price ? '#ef4444' : '#e5e7eb'}`, fontSize: '14px', boxSizing: 'border-box', outline: 'none' }}
+            />
+            {formErrors.price && <div style={{ fontSize: '12px', color: '#ef4444', marginTop: '4px' }}>{formErrors.price}</div>}
+          </div>
+        </div>
+        {computedPricePerL !== null && (
+          <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '12px', textAlign: 'center' }}>
+            计算油价：<span style={{ color: '#2563eb', fontWeight: '600' }}>{computedPricePerL}</span> 元/升
+          </div>
+        )}
         <button
+          type="button"
           style={{
             width: '100%', padding: '12px', borderRadius: '12px', border: 'none',
-            background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+            background: editingRecord
+              ? 'linear-gradient(135deg, #f59e0b, #d97706)'
+              : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
             color: 'white', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer',
           }}
-          onClick={() => {
-            if (!form.date || !form.distance || !form.amount) return
-            const consumption = ((parseFloat(form.amount) / parseFloat(form.distance)) * 100).toFixed(2)
-            setRecords(r => [{ date: form.date, distance: form.distance, amount: form.amount, price: form.price, consumption }, ...r])
-            setForm({ date: '', distance: '', amount: '', price: '' })
+          onClick={(e) => {
+            e.preventDefault()
+            if (!validateForm()) return
+            if (editingRecord) {
+              // 修改模式：使用当前记录与上一次的里程差来计算油耗
+              const vehicleRecords = getFuelRecords().filter(r => r.vehicleId === selectedVehicleId)
+                .sort((a, b) => new Date(a.date) - new Date(b.date))
+              const editIdx = vehicleRecords.findIndex(r => r.id === editingRecord.id)
+              const prevRecord = editIdx > 0 ? vehicleRecords[editIdx - 1] : null
+              const prevDist = prevRecord ? parseFloat(prevRecord.distance) : 0
+              const currDist = parseFloat(form.distance)
+              const deltaKm = currDist - prevDist
+              const consumption = deltaKm > 0 ? ((parseFloat(form.amount) / deltaKm) * 100).toFixed(2) : ''
+              updateFuelRecord(editingRecord.id, {
+                vehicleId: selectedVehicleId,
+                date: form.date,
+                distance: form.distance,
+                amount: form.amount,
+                price: form.price,
+                consumption,
+              })
+              recalcVehicleConsumption(selectedVehicleId)
+              setRecords(getFuelRecords())
+              setEditingRecord(null)
+              clearForm()
+            } else {
+              // 新增模式：根据上一次的里程计算油耗
+              const vehicleRecords = getFuelRecords().filter(r => r.vehicleId === selectedVehicleId)
+                .sort((a, b) => new Date(a.date) - new Date(b.date))
+              const prevRecord = vehicleRecords.length > 0 ? vehicleRecords[vehicleRecords.length - 1] : null
+              const prevDist = prevRecord ? parseFloat(prevRecord.distance) : 0
+              const currDist = parseFloat(form.distance)
+              const deltaKm = currDist - prevDist
+              const consumption = deltaKm > 0 ? ((parseFloat(form.amount) / deltaKm) * 100).toFixed(2) : ''
+              addFuelRecord({
+                vehicleId: selectedVehicleId,
+                date: form.date,
+                distance: form.distance,
+                amount: form.amount,
+                price: form.price,
+                consumption,
+              })
+              recalcVehicleConsumption(selectedVehicleId)
+              setRecords(getFuelRecords())
+              clearForm()
+            }
           }}>
-          + 添加记录
+          {editingRecord ? '✏️ 保存修改' : '+ 添加记录'}
         </button>
+        {editingRecord && (
+          <button
+            type="button"
+            onClick={() => { setEditingRecord(null); clearForm() }}
+            style={{
+              width: '100%', marginTop: '8px', padding: '10px', borderRadius: '12px', border: '1px solid #e5e7eb',
+              background: 'white', color: '#6b7280', fontSize: '14px', cursor: 'pointer',
+            }}
+          >
+            取消编辑
+          </button>
+        )}
       </div>
 
       {/* 记录列表 */}
-      {records.length > 0 ? (
+      {filteredRecords.length > 0 ? (
         <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ padding: '12px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', fontSize: '13px', fontWeight: '600', color: '#6b7280' }}>
-            共 {records.length} 条记录
+            共 {filteredRecords.length} 条记录
           </div>
-          {records.map((r, i) => (
-            <div key={i} style={{
-              padding: '14px 16px', borderBottom: i < records.length - 1 ? '1px solid #f3f4f6' : 'none',
+          {filteredRecords.map((r, i) => {
+            const vehicle = getVehicles().find(v => v.id === r.vehicleId)
+            return (
+            <div key={r.id} style={{
+              padding: '14px 16px', borderBottom: i < filteredRecords.length - 1 ? '1px solid #f3f4f6' : 'none',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: '500', color: '#374151' }}>{r.date}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '500', color: '#374151' }}>{r.date}</div>
+                  {vehicle && (
+                    <span style={{ fontSize: '11px', background: '#eff6ff', color: '#2563eb', padding: '1px 6px', borderRadius: '8px' }}>
+                      {vehicle.name}
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>{r.distance}km · {r.amount}L · ¥{r.price}</div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2563eb' }}>{r.consumption}</div>
-                <div style={{ fontSize: '11px', color: '#9ca3af' }}>L/100km</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2563eb' }}>{r.consumption}</div>
+                  <div style={{ fontSize: '11px', color: '#9ca3af' }}>L/100km</div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingRecord(r)
+                    setForm({ date: r.date, distance: String(r.distance), amount: String(r.amount), price: String(r.price) })
+                    setSelectedVehicleId(r.vehicleId || '')
+                    setFormErrors({})
+                  }}
+                  style={{ background: 'none', border: 'none', fontSize: '13px', cursor: 'pointer', color: '#9ca3af', padding: '4px' }}
+                >✏️</button>
+                <button
+                  onClick={() => { deleteFuelRecord(r.id); setRecords(getFuelRecords()) }}
+                  style={{ background: 'none', border: 'none', fontSize: '14px', cursor: 'pointer', color: '#d1d5db', padding: '4px' }}
+                >🗑️</button>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       ) : (
         <div style={{ background: 'white', borderRadius: '16px', padding: '40px', textAlign: 'center', color: '#d1d5db', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', fontSize: '14px' }}>
@@ -982,13 +1203,13 @@ function FuelPage() {
 
 // ========== 我的页面 ==========
 function MyPage() {
-  const [crawlStatus, setCrawlStatus] = useState(null)
   const [health, setHealth] = useState(null)
   const [showRemindModal, setShowRemindModal] = useState(false)
-  const [reminders, setReminders] = useState([])
+  const [reminders, setReminders] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('oil_reminders') || '[]') } catch { return [] }
+  })
   const [remindForm, setRemindForm] = useState({ province: '北京', oilType: '92', threshold: '0.1' })
   const [regions, setRegions] = useState(['北京', '上海', '广东', '江苏', '浙江'])
-  const [needLogin, setNeedLogin] = useState(false)
 
   useEffect(() => {
     fetch(`${API_BASE}/health`).then(r => r.json()).then(setHealth).catch(() => {})
@@ -997,57 +1218,22 @@ function MyPage() {
     }).catch(() => {})
   }, [])
 
-  const loadReminders = () => {
-    fetch(`${API_BASE}/remind`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` } })
-      .then(r => r.json())
-      .then(d => { if (d.success) setReminders(d.reminders || []) })
-      .catch(() => {})
-  }
-
   const openRemindModal = () => {
-    loadReminders()
     setShowRemindModal(true)
   }
 
   const addReminder = () => {
-    const token = localStorage.getItem('token')
-    if (!token) { setNeedLogin(true); return }
-    fetch(`${API_BASE}/remind`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify(remindForm)
-    }).then(r => r.json()).then(d => {
-      if (d.success) {
-        setReminders([...reminders, d.remind])
-        setRemindForm({ province: '北京', oilType: '92', threshold: '0.1' })
-      } else {
-        alert(d.message || '设置失败')
-      }
-    }).catch(() => alert('设置失败'))
+    const newRemind = { ...remindForm, id: Date.now().toString() }
+    const updated = [...reminders, newRemind]
+    setReminders(updated)
+    localStorage.setItem('oil_reminders', JSON.stringify(updated))
+    setRemindForm({ province: '北京', oilType: '92', threshold: '0.1' })
   }
 
   const deleteReminder = (id) => {
-    const token = localStorage.getItem('token')
-    if (!token) return
-    fetch(`${API_BASE}/remind/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    }).then(r => r.json()).then(d => {
-      if (d.success) setReminders(reminders.filter(r => r.id !== id))
-    }).catch(() => {})
-  }
-
-  useEffect(() => {
-    fetch(`${API_BASE}/health`).then(r => r.json()).then(setHealth).catch(() => {})
-  }, [])
-
-  const handleCrawl = () => {
-    setCrawlStatus('running')
-    fetch('/api/crawl', { method: 'POST' })
-      .then(r => r.json())
-      .then(d => setCrawlStatus(d.success ? 'ok' : 'err'))
-      .catch(() => setCrawlStatus('err'))
-    setTimeout(() => setCrawlStatus(null), 4000)
+    const updated = reminders.filter(r => r.id !== id)
+    setReminders(updated)
+    localStorage.setItem('oil_reminders', JSON.stringify(updated))
   }
 
   const MenuItem = ({ icon, label, value, onClick, status }) => (
@@ -1097,45 +1283,13 @@ function MyPage() {
         </div>
       )}
 
+      {/* 车辆管理 */}
+      <VehicleManager />
+
       {/* 功能菜单 */}
       <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-        <MenuItem icon="🔄" label="手动更新油价" onClick={handleCrawl} status={crawlStatus} />
         <MenuItem icon="🔔" label="油价提醒" value={reminders.length > 0 ? `${reminders.length}个` : '未设置'} onClick={openRemindModal} />
-        <MenuItem icon="⭐" label="收藏油站" value="0个" />
-        <MenuItem icon="📍" label="订阅油站" value="0个" />
-        <MenuItem icon="⚙️" label="设置" />
       </div>
-
-      {/* 广告位 */}
-      <AdBanner slot="my_page_bottom" style={{ marginTop: '16px' }} />
-
-      {/* 登录引导弹窗 */}
-      {needLogin && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', zIndex: 1001,
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }} onClick={() => setNeedLogin(false)}>
-          <div style={{
-            background: 'white', borderRadius: '16px', width: '90%', maxWidth: '320px',
-            padding: '28px 24px', textAlign: 'center'
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔐</div>
-            <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1f2937', marginBottom: '8px' }}>登录后使用油价提醒</div>
-            <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '20px', lineHeight: '1.5' }}>
-              油价提醒需要登录才能同步<br />未来可在多设备间同步提醒
-            </div>
-            <button onClick={() => setNeedLogin(false)}
-              style={{ width: '100%', padding: '10px', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', marginBottom: '8px' }}>
-              稍后再说
-            </button>
-            <button onClick={() => { alert('登录功能开发中'); setNeedLogin(false) }}
-              style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
-              去登录
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* 油价提醒弹窗 */}
       {showRemindModal && (

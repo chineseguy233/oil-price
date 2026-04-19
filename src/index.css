@@ -32,3 +32,20 @@ body {
   background: var(--bg-primary);
   transition: background 0.2s, color 0.2s;
 }
+
+/* 输入框文字和占位符颜色 */
+input::placeholder {
+  color: #9ca3af;
+}
+
+/* 输入框用户输入文字默认深色 */
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input {
+  color: #374151;
+}
+
+select option {
+  color: #374151;
+}

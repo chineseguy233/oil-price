@@ -15,7 +15,7 @@ const HOLIDAYS_2026 = [
   { name: '清明节', start: '2026-04-04', end: '2026-04-06' },
   { name: '劳动节', start: '2026-05-01', end: '2026-05-05' },
   { name: '端午节', start: '2026-05-31', end: '2026-06-02' },
-  { name: '中秋节', start: '2026-10-01', end: '2026-10-08' },
+  { name: '中秋节', start: '2026-09-25', end: '2026-10-02' },
   { name: '国庆节', start: '2026-10-01', end: '2026-10-07' },
 ];
 
@@ -92,7 +92,7 @@ async function amapDriving(origin, destination) {
   const best = path[0];
   return {
     totalDistance: parseInt(best.distance) || 0,      // 米
-    totalDuration: parseInt(best.time || 0) || 0,       // 秒（高德有时返回 null）
+    totalDuration: parseInt(best.time) || Math.round((parseInt(best.distance) || 0) / 75 * 3.6) || 0, // 秒（高德免费版有时返回null，用距离估算：75km/h）
     strategy: best.strategy || '',
     steps: (best.steps || []).map(s => ({
       instruction: s.instruction || '',
@@ -145,7 +145,7 @@ function extractSamplingPoints(steps) {
 
 // ============ 核心计算 ============
 
-async function calculateRouteOilCost({ from, to, oil_type = '92', fuel_consumption = 7.5 }) {
+async function calculateRouteOilCost({ from, to, oil_type = '92', fuel_consumption = 7.5, travel_date }){
   // 1. 地理编码起点终点
   const fromGeo = await amapGeocode(from);
   const toGeo = await amapGeocode(to);
@@ -205,9 +205,8 @@ async function calculateRouteOilCost({ from, to, oil_type = '92', fuel_consumpti
   // 6. 高速费估算（参考值：0.45元/公里）
   const toll_cost = parseFloat((total_distance / 1000 * 0.45).toFixed(2));
 
-  // 7. 节假日免费判断
-  const today = new Date().toISOString().split('T')[0];
-  const holidayInfo = isExpresswayFree(today);
+  const travelDate = travel_date || new Date().toISOString().split('T')[0];
+  const holidayInfo = isExpresswayFree(travelDate);
   const is_free_toll = holidayInfo.free;
   const free_toll_saving = is_free_toll ? toll_cost : 0;
 
@@ -236,7 +235,7 @@ async function calculateRouteOilCost({ from, to, oil_type = '92', fuel_consumpti
 // ============ API 路由 ============
 
 router.get('/route/oil-cost', async (req, res) => {
-  const { from, to, oil_type = '92', fuel_consumption = '7.5' } = req.query;
+  const { from, to, oil_type = '92', fuel_consumption = '7.5', travel_date } = req.query;
 
   if (!from || !to) {
     return res.status(400).json({ success: false, error: '缺少必填参数：from, to' });
@@ -248,6 +247,7 @@ router.get('/route/oil-cost', async (req, res) => {
   try {
     const result = await calculateRouteOilCost({
       from, to, oil_type: oilType, fuel_consumption: fuelConsumption,
+      travel_date: travel_date || new Date().toISOString().split('T')[0],
     });
     res.json({ success: true, ...result });
   } catch (err) {

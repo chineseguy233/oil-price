@@ -1,16 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { getSelectedVehicle, getVehicles, setSelectedVehicleId } from '../utils/vehicles'
+import { VehicleSelector } from '../components/VehicleComponents'
+import TabBar from '../components/TabBar'
 
 const API_BASE = '/api'
-
-const OIL_TYPES = [
-  { key: '92', label: '92#汽油', color: '#3b82f6' },
-  { key: '95', label: '95#汽油', color: '#8b5cf6' },
-  { key: '98', label: '98#汽油', color: '#f59e0b' },
-  { key: '0', label: '0#柴油', color: '#10b981' },
-]
-
-const OIL_COLORS = { '92': '#3b82f6', '95': '#8b5cf6', '98': '#f59e0b', '0': '#10b981' }
 
 const FUEL_CONSUMPTION_OPTIONS = [
   { key: '6', label: '6L', desc: '小型车' },
@@ -20,7 +14,19 @@ const FUEL_CONSUMPTION_OPTIONS = [
 ]
 
 // ========== 输入卡片 ==========
-function InputCard({ from, setFrom, to, setTo, oilType, setOilType, fuelConsumption, setFuelConsumption, onCalculate, loading }) {
+function InputCard({ from, setFrom, to, setTo, fuelConsumption, setFuelConsumption, onCalculate, loading, vehicleMode, setVehicleMode, selectedVehicle, setSelectedVehicleState, travelDate, setTravelDate }) {
+  const handleVehicleChange = (v) => {
+    setSelectedVehicleState(v)
+    setSelectedVehicleId(v.id)
+    setFuelConsumption(String(v.fuelConsumption))
+  }
+
+  const handleQuickMode = () => {
+    setVehicleMode(false)
+    setSelectedVehicleState(null)
+    setSelectedVehicleId(null)
+  }
+
   return (
     <div style={{
       background: 'white',
@@ -62,63 +68,80 @@ function InputCard({ from, setFrom, to, setTo, oilType, setOilType, fuelConsumpt
         </div>
       </div>
 
-      {/* 油耗 */}
+      {/* 车型/油耗 */}
       <div style={{ marginBottom: '16px' }}>
-        <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '8px', fontWeight: '500' }}>车型油耗</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-          {FUEL_CONSUMPTION_OPTIONS.map(opt => (
-            <button
-              key={opt.key}
-              onClick={() => setFuelConsumption(opt.key)}
-              style={{
-                padding: '10px 4px',
-                borderRadius: '12px',
-                border: fuelConsumption === opt.key ? 'none' : '1.5px solid #e5e7eb',
-                background: fuelConsumption === opt.key
-                  ? `linear-gradient(135deg, ${OIL_COLORS['92']}, ${OIL_COLORS['92']}cc)`
-                  : '#f9fafb',
-                color: fuelConsumption === opt.key ? 'white' : '#6b7280',
-                fontWeight: fuelConsumption === opt.key ? 'bold' : '500',
-                fontSize: '13px',
-                cursor: 'pointer',
-                boxShadow: fuelConsumption === opt.key ? `0 4px 12px ${OIL_COLORS['92']}44` : 'none',
-                transition: 'all 0.2s',
-              }}
-            >
-              <div>🚗 {opt.label}</div>
-              <div style={{ fontSize: '10px', opacity: fuelConsumption === opt.key ? 0.8 : 0.7, marginTop: '2px' }}>{opt.desc}</div>
-            </button>
-          ))}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: '500' }}>车型油耗</div>
+          <button
+            onClick={() => vehicleMode ? handleQuickMode() : setVehicleMode(true)}
+            style={{
+              fontSize: '11px', color: '#2563eb',
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '2px 6px',
+            }}
+          >
+            {vehicleMode ? '快速选择' : '我的车辆'}
+          </button>
         </div>
+
+        {vehicleMode ? (
+          /* 车辆选择模式 */
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <VehicleSelector selectedVehicle={selectedVehicle} onChange={handleVehicleChange} />
+            {selectedVehicle && (
+              <div style={{
+                fontSize: '12px', color: '#6b7280',
+                background: '#f0f9ff', borderRadius: '8px',
+                padding: '6px 10px', flexShrink: 0,
+              }}>
+                {selectedVehicle.oilType}# · {selectedVehicle.fuelConsumption}L/百公里
+              </div>
+            )}
+          </div>
+        ) : (
+          /* 快速选择模式 */
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+            {FUEL_CONSUMPTION_OPTIONS.map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => setFuelConsumption(opt.key)}
+                style={{
+                  padding: '10px 4px',
+                  borderRadius: '12px',
+                  border: fuelConsumption === opt.key ? 'none' : '1.5px solid #e5e7eb',
+                  background: fuelConsumption === opt.key
+                    ? 'linear-gradient(135deg, #3b82f6, #60a5fa)'
+                    : '#f9fafb',
+                  color: fuelConsumption === opt.key ? 'white' : '#6b7280',
+                  fontWeight: fuelConsumption === opt.key ? 'bold' : '500',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  boxShadow: fuelConsumption === opt.key ? '0 4px 12px #3b82f644' : 'none',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <div>🚗 {opt.label}</div>
+                <div style={{ fontSize: '10px', opacity: fuelConsumption === opt.key ? 0.8 : 0.7, marginTop: '2px' }}>{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* 油号 */}
-      <div style={{ marginBottom: '20px' }}>
-        <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '8px', fontWeight: '500' }}>选择油号</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-          {OIL_TYPES.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setOilType(t.key)}
-              style={{
-                padding: '10px 4px',
-                borderRadius: '12px',
-                border: oilType === t.key ? 'none' : '1.5px solid #e5e7eb',
-                background: oilType === t.key
-                  ? `linear-gradient(135deg, ${t.color}, ${t.color}cc)`
-                  : '#f9fafb',
-                color: oilType === t.key ? 'white' : '#6b7280',
-                fontWeight: oilType === t.key ? 'bold' : '500',
-                fontSize: '13px',
-                cursor: 'pointer',
-                boxShadow: oilType === t.key ? `0 4px 12px ${t.color}44` : 'none',
-                transition: 'all 0.2s',
-              }}
-            >
-              {t.key === '0' ? '0#柴油' : `${t.key}#汽油`}
-            </button>
-          ))}
-        </div>
+      {/* 出行日期 */}
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', fontWeight: '500' }}>出行日期（高速免费判断用）</div>
+        <input
+          type="date"
+          value={travelDate}
+          onChange={e => setTravelDate(e.target.value)}
+          style={{
+            width: '100%', padding: '10px 14px',
+            borderRadius: '12px', border: '1.5px solid #e5e7eb',
+            fontSize: '14px', color: '#1f2937',
+            background: '#f9fafb', outline: 'none', boxSizing: 'border-box',
+          }}
+        />
       </div>
 
       {/* 计算按钮 */}
@@ -171,7 +194,7 @@ function ResultCard({ result }) {
     from, to, total_cost, oil_type, fuel_consumption, total_duration_min,
   } = result
 
-  const oilColor = OIL_COLORS[oil_type] || '#3b82f6'
+  const oilColor = { '92': '#3b82f6', '95': '#8b5cf6', '98': '#f59e0b', '0': '#10b981' }[oil_type] || '#3b82f6'
   const validProvinces = provinces_crossed.filter(p => province_prices[p] !== null)
 
   return (
@@ -412,7 +435,8 @@ function ErrorTip({ message, onRetry }) {
 }
 
 // ========== TripPage 主页面 ==========
-export default function TripPage({ onBack }) {
+export default function TripPage() {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [from, setFrom] = useState(searchParams.get('from') || '')
   const [to, setTo] = useState(searchParams.get('to') || '')
@@ -442,8 +466,13 @@ export default function TripPage({ onBack }) {
       }
     }
   }, [])
-  const [oilType, setOilType] = useState('92')
-  const [fuelConsumption, setFuelConsumption] = useState('7.5')
+  const [fuelConsumption, setFuelConsumption] = useState(() => {
+    const v = getSelectedVehicle()
+    return v ? String(v.fuelConsumption) : '7.5'
+  })
+  const [travelDate, setTravelDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [vehicleMode, setVehicleMode] = useState(() => !!getSelectedVehicle())
+  const [selectedVehicle, setSelectedVehicleState] = useState(getSelectedVehicle)
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -455,7 +484,7 @@ export default function TripPage({ onBack }) {
     setResult(null)
     try {
       const res = await fetch(
-        `${API_BASE}/route/oil-cost?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&oil_type=${oilType}&fuel_consumption=${fuelConsumption}`
+        `${API_BASE}/route/oil-cost?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&fuel_consumption=${fuelConsumption}&travel_date=${travelDate}`
       )
       const data = await res.json()
       if (data.success) {
@@ -470,7 +499,7 @@ export default function TripPage({ onBack }) {
     } finally {
       setLoading(false)
     }
-  }, [from, to, oilType, fuelConsumption, setSearchParams])
+  }, [from, to, fuelConsumption, travelDate, setSearchParams])
 
   // 从 URL 参数进来时自动计算
   useEffect(() => {
@@ -481,34 +510,32 @@ export default function TripPage({ onBack }) {
 
   return (
     <div style={{
+      maxWidth: '480px',
+      margin: '0 auto',
       minHeight: '100vh',
       background: '#f8fafc',
       fontFamily: 'system-ui, -apple-system, sans-serif',
+      color: '#1f2937',
       paddingTop: 'env(safe-area-inset-top)',
     }}>
-      {/* 顶部 */}
+      {/* 顶部 — 风格与 App 统一 */}
       <div style={{
         background: 'white',
-        padding: '14px 16px',
+        padding: '14px 20px',
         display: 'flex',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        gap: '12px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
         position: 'sticky',
         top: 0,
         zIndex: 100,
+        borderBottom: '1px solid #e5e7eb',
       }}>
-        <button
-          onClick={onBack}
-          style={{
-            background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', padding: '4px',
-          }}
-        >←</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '17px', fontWeight: 'bold', color: '#1f2937' }}>自驾油费计算器</div>
-          <div style={{ fontSize: '11px', color: '#9ca3af' }}>输入出发地和目的地，计算全程油费</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '22px' }}>🚗</span>
+          <span style={{ fontSize: '17px', fontWeight: 'bold', color: '#1f2937' }}>自驾油费计算器</span>
         </div>
-        <div style={{ fontSize: '24px' }}>🚗</div>
+        <div style={{ fontSize: '12px', color: '#9ca3af' }}>输入出发地和目的地</div>
       </div>
 
       {/* 五一 Banner */}
@@ -532,10 +559,14 @@ export default function TripPage({ onBack }) {
       <InputCard
         from={from} setFrom={setFrom}
         to={to} setTo={setTo}
-        oilType={oilType} setOilType={setOilType}
         fuelConsumption={fuelConsumption} setFuelConsumption={setFuelConsumption}
         onCalculate={calculate}
         loading={loading}
+        vehicleMode={vehicleMode}
+        setVehicleMode={setVehicleMode}
+        selectedVehicle={selectedVehicle}
+        setSelectedVehicleState={setSelectedVehicleState}
+        travelDate={travelDate} setTravelDate={setTravelDate}
       />
 
       {/* 错误提示 */}
@@ -563,6 +594,7 @@ export default function TripPage({ onBack }) {
           </div>
         </div>
       )}
+      <TabBar activeTab="price" onTabChange={(id) => navigate('/')} />
     </div>
   )
 }

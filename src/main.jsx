@@ -17,9 +17,9 @@ function Router() {
   return (
     <>
       {isTrip ? (
-        <TripPage onBack={() => navigate('/')} />
+        <TripPage />
       ) : isRankings ? (
-        <RankingsPage onBack={() => navigate('/')} />
+        <RankingsPage />
       ) : isStations ? (
         <StationsPage />
       ) : (
@@ -37,8 +37,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Router />} />
-        <Route path="/trip" element={<TripPage onBack={() => navigate('/')} />} />
-        <Route path="/rankings" element={<RankingsPage onBack={() => navigate('/')} />} />
+        <Route path="/trip" element={<TripPage />} />
+        <Route path="/rankings" element={<RankingsPage />} />
         <Route path="/stations" element={<StationsPage />} />
       </Routes>
     </BrowserRouter>

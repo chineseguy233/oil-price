@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import TabBar from '../components/TabBar'
 
 const API_BASE = '/api'
 
@@ -230,7 +231,8 @@ function ReasonModal({ province, analysis, price, oilType, onClose }) {
 }
 
 // ========== RankingsPage 主页面 ==========
-export default function RankingsPage({ onBack }) {
+export default function RankingsPage() {
+  const navigate = useNavigate()
   const [oilType, setOilType] = useState('92')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -268,33 +270,33 @@ export default function RankingsPage({ onBack }) {
 
   return (
     <div style={{
+      maxWidth: '480px',
+      margin: '0 auto',
       minHeight: '100vh',
       background: '#f8fafc',
       fontFamily: 'system-ui, -apple-system, sans-serif',
+      color: '#1f2937',
       paddingTop: 'env(safe-area-inset-top)',
       paddingBottom: 'calc(80px + env(safe-area-inset-bottom))',
     }}>
-      {/* 顶部 */}
+      {/* 顶部 — 风格与 App 统一 */}
       <div style={{
         background: 'white',
-        padding: '14px 16px',
+        padding: '14px 20px',
         display: 'flex',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        gap: '12px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
         position: 'sticky',
         top: 0,
         zIndex: 100,
+        borderBottom: '1px solid #e5e7eb',
       }}>
-        <button
-          onClick={onBack}
-          style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', padding: '4px' }}
-        >←</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '17px', fontWeight: 'bold', color: '#1f2937' }}>中国油价红蓝榜</div>
-          <div style={{ fontSize: '11px', color: '#9ca3af' }}>{today} 更新</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '22px' }}>🏆</span>
+          <span style={{ fontSize: '17px', fontWeight: 'bold', color: '#1f2937' }}>中国油价红蓝榜</span>
         </div>
-        <div style={{ fontSize: '24px' }}>🏆</div>
+        <div style={{ fontSize: '12px', color: '#9ca3af' }}>{today} 更新</div>
       </div>
 
       {/* 油号选择 */}
@@ -455,6 +457,7 @@ export default function RankingsPage({ onBack }) {
           onClose={() => setSelectedProvince(null)}
         />
       )}
+      <TabBar activeTab="price" onTabChange={(id) => navigate('/')} />
     </div>
   )
 }
