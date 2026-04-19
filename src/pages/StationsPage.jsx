@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { autoLocate, amapSearchNearby } from '../utils/geolocation'
 
 const API_BASE = '/api'
@@ -50,23 +50,101 @@ function navigateTo(location, name) {
   window.open(url, '_blank')
 }
 
-// ========== 简易地图示意图 ==========
-function MiniMap({ stations, userLocation, radius }) {
-  const size = 120
-  const center = size / 2
+// ========== 真实高德地图 ==========
+function RealMap({ stations, userLocation, radius, onStationClick }) {
+  const mapRef = useRef(null)
+  const mapInstance = useRef(null)
+  const markersRef = useRef([])
+  const [amapReady, setAmapReady] = useState(false)
 
-  // 将经纬度转换为相对位置（简化计算）
-  const lngRange = radius / 111000 // 约111km每度
-  const latRange = radius / 111000
-
-  const toPos = (lng, lat) => {
-    const x = center + ((lng - userLocation.lng) / lngRange) * (size / 2 - 10)
-    const y = center - ((lat - userLocation.lat) / latRange) * (size / 2 - 10)
-    return {
-      x: Math.max(5, Math.min(size - 5, x)),
-      y: Math.max(5, Math.min(size - 5, y)),
+  // 等待 AMap SDK 加载完成（SDK 通过 CDN 异步加载）
+  useEffect(() => {
+    if (window.AMap) {
+      setAmapReady(true)
+      return
     }
-  }
+    const timer = setInterval(() => {
+      if (window.AMap) {
+        setAmapReady(true)
+        clearInterval(timer)
+      }
+    }, 200)
+    // 最多等 15 秒
+    const timeout = setTimeout(() => clearInterval(timer), 15000)
+    return () => { clearInterval(timer); clearTimeout(timeout) }
+  }, [])
+
+  // 初始化地图（仅在 SDK 就绪后执行一次）
+  useEffect(() => {
+    if (!amapReady || !mapRef.current || mapInstance.current) return
+
+    try {
+      mapInstance.current = new window.AMap.Map(mapRef.current, {
+        zoom: 13,
+        center: userLocation ? [userLocation.lng, userLocation.lat] : undefined,
+        mapStyle: 'amap://styles/whitesmoke',
+      })
+      mapInstance.current.addControl(new window.AMap.Scale())
+    } catch (e) {
+      console.error('AMap init failed:', e)
+    }
+
+    return () => {
+      if (mapInstance.current) {
+        mapInstance.current.destroy()
+        mapInstance.current = null
+      }
+    }
+  }, [amapReady])
+
+  // 更新中心点
+  useEffect(() => {
+    if (!mapInstance.current || !userLocation) return
+    mapInstance.current.setCenter([userLocation.lng, userLocation.lat])
+  }, [userLocation])
+
+  // 更新标记
+  useEffect(() => {
+    if (!mapInstance.current) return
+
+    // 清除旧标记
+    markersRef.current.forEach(m => mapInstance.current.remove(m))
+    markersRef.current = []
+
+    if (!userLocation) return
+
+    // 用户位置标记（蓝色）
+    const userMarker = new window.AMap.Marker({
+      position: new window.AMap.LngLat(userLocation.lng, userLocation.lat),
+      title: '您的位置',
+      content: '<div style="width:12px;height:12px;background:#2563eb;border-radius:50%;border:3px solid white;box-shadow:0 0 0 2px #2563eb;"></div>',
+      offset: new window.AMap.Pixel(-6, -6),
+    })
+    mapInstance.current.add(userMarker)
+    markersRef.current.push(userMarker)
+
+    // 加油站标记（橙色）
+    stations.forEach(s => {
+      if (!s.location) return
+      const [lng, lat] = s.location.split(',').map(Number)
+      const priceText = s.price92 != null ? `¥${s.price92}` : ''
+      const brandText = s.brand || ''
+      const marker = new window.AMap.Marker({
+        position: new window.AMap.LngLat(lng, lat),
+        title: `${s.name} ${priceText}`,
+        content: `<div style="background:#f59e0b;color:white;padding:2px 6px;border-radius:10px;font-size:11px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.2);cursor:pointer;">${brandText}</div>`,
+        offset: new window.AMap.Pixel(-20, -10),
+      })
+      marker.on('click', () => onStationClick && onStationClick(s))
+      mapInstance.current.add(marker)
+      markersRef.current.push(marker)
+    })
+
+    // 自动缩放视野
+    if (stations.length > 0) {
+      mapInstance.current.setFitView(markersRef.current, false, [50, 50, 50, 50])
+    }
+  }, [stations, onStationClick])
 
   return (
     <div style={{
@@ -76,68 +154,31 @@ function MiniMap({ stations, userLocation, radius }) {
       marginBottom: '12px',
       boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
     }}>
-      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px', fontWeight: '500' }}>📍 油站分布示意</div>
-      <div style={{
-        position: 'relative',
-        width: `${size}px`,
-        height: `${size}px`,
-        margin: '0 auto',
-        background: 'linear-gradient(135deg, #e0f2fe 0%, #f0fdf4 100%)',
-        borderRadius: '50%',
-        border: '2px solid #bfdbfe',
-        overflow: 'hidden',
-      }}>
-        {/* 定位中心点 */}
+      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px', fontWeight: '500' }}>📍 附近加油站</div>
+      {!amapReady ? (
         <div style={{
-          position: 'absolute',
-          left: `${center - 4}px`,
-          top: `${center - 4}px`,
-          width: '8px',
-          height: '8px',
-          background: '#2563eb',
-          borderRadius: '50%',
-          border: '2px solid white',
-          boxShadow: '0 0 0 2px #2563eb',
-          zIndex: 10,
-        }} />
-        {/* 辐射圈 */}
-        <div style={{
-          position: 'absolute',
-          left: '50%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '60%',
-          height: '60%',
-          border: '1px dashed #93c5fd',
-          borderRadius: '50%',
-        }} />
-        {/* 加油站标记 */}
-        {stations.slice(0, 12).map((s, i) => {
-          if (!s.location) return null
-          const [lng, lat] = s.location.split(',')
-          const pos = toPos(parseFloat(lng), parseFloat(lat))
-          return (
-            <div
-              key={i}
-              title={s.name}
-              style={{
-                position: 'absolute',
-                left: `${pos.x - 3}px`,
-                top: `${pos.y - 3}px`,
-                width: '6px',
-                height: '6px',
-                background: '#f59e0b',
-                borderRadius: '50%',
-                border: '1px solid white',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                cursor: 'pointer',
-              }}
-            />
-          )
-        })}
-      </div>
+          width: '100%', height: '180px', borderRadius: '10px', overflow: 'hidden',
+          border: '1px solid #e5e7eb', background: '#f9fafb',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: '8px'
+        }}>
+          <div style={{ fontSize: '20px' }}>🗺️</div>
+          <div style={{ fontSize: '12px', color: '#9ca3af' }}>地图加载中...</div>
+        </div>
+      ) : (
+        <div
+          ref={mapRef}
+          style={{
+            width: '100%',
+            height: '180px',
+            borderRadius: '10px',
+            overflow: 'hidden',
+            border: '1px solid #e5e7eb',
+          }}
+        />
+      )}
       <div style={{ textAlign: 'center', fontSize: '10px', color: '#9ca3af', marginTop: '6px' }}>
-        中心为您的位置 · 共{stations.length}个油站
+        {amapReady ? `共${stations.length}个油站 · 点击标记查看详情` : '等待地图加载...'}
       </div>
     </div>
   )
@@ -209,7 +250,7 @@ function StationCard({ station, sortKey, provincePrice }) {
         </div>
       </div>
 
-      {/* 第二行：价格（参考价标注）+ 品牌 */}
+      {/* 第二行：价格（模拟数据标注）+ 品牌 */}
       <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
         <div style={{
           flex: 1,
@@ -222,6 +263,9 @@ function StationCard({ station, sortKey, provincePrice }) {
           <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#d97706' }}>
             {station.price92 != null ? `¥${station.price92}` : '—'}
           </div>
+          {station.price92 != null && (
+            <div style={{ fontSize: '9px', color: '#b45309', marginTop: '2px' }}>模拟数据</div>
+          )}
           {!station.price92 && provincePrice && (
             <div style={{ fontSize: '10px', color: '#b45309', marginTop: '2px' }}>参考价¥{provincePrice}</div>
           )}
@@ -237,6 +281,9 @@ function StationCard({ station, sortKey, provincePrice }) {
           <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#7c3aed' }}>
             {station.price95 != null ? `¥${station.price95}` : '—'}
           </div>
+          {station.price95 != null && (
+            <div style={{ fontSize: '9px', color: '#7c3aed', marginTop: '2px' }}>模拟数据</div>
+          )}
           {!station.price95 && provincePrice && (
             <div style={{ fontSize: '10px', color: '#7c3aed', marginTop: '2px' }}>参考价¥{provincePrice}</div>
           )}
@@ -366,7 +413,7 @@ function ProvinceSelector({ value, onChange, provinces }) {
 }
 
 // ========== 加油站比价页面 ==========
-export default function StationsPage({ selectedRegion, setSelectedRegion, regions }) {
+export default function StationsPage({ selectedRegion, setSelectedRegion, regions } = {}) {
   const [stations, setStations] = useState([])
   const [loading, setLoading] = useState(false)
   const [sortKey, setSortKey] = useState('distance')
@@ -386,6 +433,7 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
   // 加载省份加油站（模拟数据）
   const loadProvinceStations = useCallback(() => {
     setLoading(true)
+    setStations([]) // 切换省份时先清空旧数据
     fetch(`${API_BASE}/stations/search?province=${encodeURIComponent(selectedRegion)}`)
       .then(r => r.json())
       .then(d => {
@@ -668,9 +716,22 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
         </div>
       )}
 
-      {/* 简易地图示意（仅附近模式且定位成功后显示） */}
-      {searchMode === 'nearby' && userLocation && stations.length > 0 && (
-        <MiniMap stations={stations} userLocation={userLocation} radius={radius} />
+      {/* 地图 */}
+      {userLocation && stations.length > 0 && (
+        <RealMap
+          stations={sortedStations}
+          userLocation={userLocation}
+          radius={radius}
+          onStationClick={(station) => {
+            // 滚动到卡片位置
+            const idx = sortedStations.findIndex(s => s.name === station.name)
+            if (idx >= 0) {
+              setPage(1)
+              // 滚动到列表顶部
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+            }
+          }}
+        />
       )}
 
       {/* 加油站列表 */}

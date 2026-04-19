@@ -23,12 +23,49 @@
       "success": true,
       "source": "autohome",
       "provinces": 31
+    },
+    {
+      "time": "2026-04-19 19:10",
+      "success": true,
+      "source": "autohome",
+      "provinces": 31
+    },
+    {
+      "time": "2026-04-19 19:10",
+      "success": true,
+      "source": "autohome",
+      "provinces": 31
+    },
+    {
+      "time": "2026-04-19 19:10",
+      "success": true,
+      "source": "autohome",
+      "provinces": 31
+    },
+    {
+      "time": "2026-04-19 19:10",
+      "success": true,
+      "source": "autohome",
+      "provinces": 31
+    },
+    {
+      "time": "2026-04-19 19:44",
+      "success": true,
+      "source": "autohome",
+      "provinces": 31
+    },
+    {
+      "time": "2026-04-19 19:44",
+      "success": true,
+      "source": "autohome",
+      "provinces": 31
     }
   ],
   "last_crawl": {
-    "time": "2026-04-19 01:12",
+    "time": "2026-04-19 19:44",
     "success": true,
     "source": "autohome",
     "provinces": 31
-  }
+  },
+  "success_rate": 90.0
 }

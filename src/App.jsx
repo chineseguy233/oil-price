@@ -1,7 +1,177 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import * as echarts from 'echarts'
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import StationsPage from './pages/StationsPage'
+import TripPage from './pages/TripPage'
 import { autoLocate } from './utils/geolocation'
+
+// ========== 省份选择器（带搜索）============
+function ProvinceSelector({ value, onChange, provinces }) {
+  const [search, setSearch] = useState('')
+  const [open, setOpen] = useState(false)
+  const [highlighted, setHighlighted] = useState(-1)
+  const inputRef = useRef(null)
+
+  // 过滤
+  const filtered = search
+    ? provinces.filter(p => p.includes(search))
+    : provinces
+
+  // 最近访问
+  const recent = JSON.parse(localStorage.getItem('recent_provinces') || '[]')
+
+  // 按拼音首字母分组
+  const grouped = {}
+  filtered.forEach(p => {
+    const letter = p.charAt(0).toUpperCase()
+    if (!grouped[letter]) grouped[letter] = []
+    grouped[letter].push(p)
+  })
+  const letters = Object.keys(grouped).sort()
+
+  const flatFiltered = filtered
+
+  // 键盘导航
+  const handleKeyDown = (e) => {
+    if (!open) { if (e.key === 'Enter' || e.key === ' ') setOpen(true); return }
+    if (e.key === 'ArrowDown') { setHighlighted(h => Math.min(h + 1, flatFiltered.length - 1)); e.preventDefault() }
+    else if (e.key === 'ArrowUp') { setHighlighted(h => Math.max(h - 1, 0)); e.preventDefault() }
+    else if (e.key === 'Enter' && highlighted >= 0) {
+      onChange(flatFiltered[highlighted])
+      setOpen(false); setSearch(''); setHighlighted(-1)
+    } else if (e.key === 'Escape') { setOpen(false); setSearch('') }
+  }
+
+  const select = (p) => {
+    onChange(p)
+    setOpen(false)
+    setSearch('')
+    setHighlighted(-1)
+    // 记录最近
+    const rec = JSON.parse(localStorage.getItem('recent_provinces') || '[]')
+    const updated = [p, ...rec.filter(r => r !== p)].slice(0, 3)
+    localStorage.setItem('recent_provinces', JSON.stringify(updated))
+  }
+
+  return (
+    <div style={{ position: 'relative', flex: 1 }}>
+      <div
+        onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 50) }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          padding: '10px 12px', borderRadius: '10px',
+          border: open ? '2px solid var(--accent-blue)' : '1px solid var(--border-color)',
+          background: open ? 'var(--bg-secondary)' : 'var(--bg-tertiary)', cursor: 'pointer', minHeight: '44px',
+          color: 'var(--text-primary)',
+          transition: 'border-color 0.2s, background 0.2s',
+        }}
+      >
+        <span style={{ fontSize: '15px', flex: 1 }}>{value}</span>
+        <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{open ? '▲' : '▼'}</span>
+      </div>
+
+      {open && (
+        <>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} onClick={() => { setOpen(false); setSearch('') }} />
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+            background: 'var(--bg-secondary)', borderRadius: '12px',
+            boxShadow: 'var(--shadow-lg)',
+            zIndex: 1000, maxHeight: '70vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+            border: '1px solid var(--border-color)',
+          }}>
+            {/* 搜索框 */}
+            <div style={{ padding: '10px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-primary)', borderRadius: '8px', padding: '6px 10px' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '14px' }}>🔍</span>
+                <input
+                  ref={inputRef}
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setHighlighted(-1) }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="搜索省份..."
+                  style={{ border: 'none', outline: 'none', fontSize: '14px', background: 'transparent', flex: 1, color: 'var(--text-primary)' }}
+                />
+                {search && <span onClick={() => setSearch('')} style={{ color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}>✕</span>}
+              </div>
+            </div>
+
+            {/* 最近使用 */}
+            {!search && recent.length > 0 && (
+              <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-color)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: '500' }}>最近</div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {recent.map(r => (
+                    <button
+                      key={r}
+                      onClick={() => select(r)}
+                      style={{
+                        padding: '4px 12px', borderRadius: '16px', border: '1px solid var(--border-color)',
+                        background: value === r ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
+                        color: value === r ? '#fff' : 'var(--text-secondary)', fontSize: '13px', cursor: 'pointer',
+                      }}
+                    >{r}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 热门 */}
+            {!search && (
+              <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-color)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: '500' }}>热门</div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {['北京', '上海', '广东', '浙江', '江苏'].filter(r => provinces.includes(r) && !recent.includes(r)).map(r => (
+                    <button
+                      key={r}
+                      onClick={() => select(r)}
+                      style={{
+                        padding: '4px 12px', borderRadius: '16px', border: '1px solid var(--border-color)',
+                        background: value === r ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
+                        color: value === r ? '#fff' : 'var(--text-secondary)', fontSize: '13px', cursor: 'pointer',
+                      }}
+                    >{r}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 省份列表（带字母分组） */}
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {letters.map(letter => (
+                <div key={letter}>
+                  <div style={{ padding: '4px 12px', background: 'var(--bg-tertiary)', fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', position: 'sticky', top: 0 }}>{letter}</div>
+                  {grouped[letter].map((p, i) => {
+                    const globalIdx = flatFiltered.indexOf(p)
+                    return (
+                      <div
+                        key={p}
+                        onClick={() => select(p)}
+                        onMouseEnter={() => setHighlighted(globalIdx)}
+                        style={{
+                          padding: '10px 14px', cursor: 'pointer', fontSize: '14px',
+                          background: globalIdx === highlighted ? 'var(--accent-blue)' + '22' : 'transparent',
+                          color: value === p ? 'var(--accent-blue)' : 'var(--text-primary)',
+                          fontWeight: value === p ? '600' : '400',
+                          borderBottom: '1px solid var(--border-color)',
+                        }}
+                      >
+                        {p}
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+              {filtered.length === 0 && (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>未找到 "{search}"</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 const API_BASE = '/api'
 
@@ -19,6 +189,25 @@ const OIL_COLORS = { '92': '#3b82f6', '95': '#8b5cf6', '98': '#f59e0b', '0': '#1
 // 广告位配置
 const AD_BANNER_SLOT = 'home_top_banner'
 const AD_LIST_SLOT = 'province_list_item'
+
+// 广告 Banner 占位
+function AdBanner({ slot, style }) {
+  return (
+    <div style={{
+      margin: '12px 16px',
+      padding: '20px',
+      background: '#f9fafb',
+      borderRadius: '12px',
+      border: '1px dashed #e5e7eb',
+      textAlign: 'center',
+      color: '#9ca3af',
+      fontSize: '12px',
+      ...style,
+    }}>
+      广告位: {slot}
+    </div>
+  )
+}
 
 // 实用信息 Banner
 function InfoBanner({ style }) {
@@ -80,6 +269,8 @@ function ProvinceRow({ region, price, oilType, index }) {
 // ========== 油价页面 ==========
 function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelectedRegion, oilData, regions, updateTime, hoursOld }) {
   const [showAdBanner, setShowAdBanner] = useState(true)
+  const [listSearch, setListSearch] = useState('')
+  const [listSort, setListSort] = useState('default') // 'default' | 'price_asc' | 'price_desc'
 
   if (!oilData) {
     return (
@@ -93,6 +284,20 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
   const currentPrice = oilData[selectedRegion]?.[selectedOil] ?? '—'
   const oilColor = OIL_COLORS[selectedOil]
   const isStale = hoursOld !== null && hoursOld >= 24
+
+  // 列表排序过滤
+  const sortedRegions = [...regions].sort((a, b) => {
+    if (listSort === 'price_asc') {
+      return (oilData[a]?.[selectedOil] ?? 999) - (oilData[b]?.[selectedOil] ?? 999)
+    } else if (listSort === 'price_desc') {
+      return (oilData[b]?.[selectedOil] ?? 999) - (oilData[a]?.[selectedOil] ?? 999)
+    }
+    return a.localeCompare(b, 'zh-CN')
+  })
+
+  const displayedRegions = listSearch
+    ? sortedRegions.filter(r => r.includes(listSearch))
+    : sortedRegions
 
   return (
     <div style={{ paddingBottom: '80px' }}>
@@ -159,30 +364,16 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
       <div style={{ margin: '0 16px 12px', background: 'white', borderRadius: '16px', padding: '14px 16px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
         <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px', fontWeight: '500' }}>选择省份</div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <select
+          <ProvinceSelector
             value={selectedRegion}
-            onChange={e => {
-              setSelectedRegion(e.target.value)
-              // 记录最近访问
+            onChange={val => {
+              setSelectedRegion(val)
               const recent = JSON.parse(localStorage.getItem('recent_provinces') || '[]')
-              const updated = [e.target.value, ...recent.filter(r => r !== e.target.value)].slice(0, 3)
+              const updated = [val, ...recent.filter(r => r !== val)].slice(0, 3)
               localStorage.setItem('recent_provinces', JSON.stringify(updated))
             }}
-            style={{
-              flex: 1,
-              padding: '10px 12px',
-              borderRadius: '10px',
-              border: '1px solid #e5e7eb',
-              fontSize: '14px',
-              background: '#f9fafb',
-              cursor: 'pointer',
-              color: '#374151',
-            }}
-          >
-            {regions.sort().map(r => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
+            provinces={regions}
+          />
           <button
             onClick={() => setShowAdBanner(v => !v)}
             style={{
@@ -193,6 +384,7 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
               fontSize: '12px',
               color: '#9ca3af',
               cursor: 'pointer',
+              flexShrink: 0,
             }}
             title="隐藏广告"
           >
@@ -240,12 +432,45 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '8px',
         }}>
-          <span>各省油价参考</span>
-          <span style={{ fontWeight: 'bold', color: oilColor }}>{OIL_TYPES.find(t => t.key === selectedOil)?.label}</span>
+          <span>各省油价参考 <span style={{ fontWeight: '400', color: '#9ca3af', fontSize: '11px' }}>({displayedRegions.length}省)</span></span>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            {/* 搜索 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '2px 8px' }}>
+              <span style={{ fontSize: '11px', color: '#9ca3af' }}>🔍</span>
+              <input
+                value={listSearch}
+                onChange={e => setListSearch(e.target.value)}
+                placeholder="过滤..."
+                style={{ border: 'none', outline: 'none', fontSize: '12px', width: '60px', background: 'transparent', color: '#374151' }}
+              />
+              {listSearch && <span onClick={() => setListSearch('')} style={{ color: '#9ca3af', cursor: 'pointer', fontSize: '10px' }}>✕</span>}
+            </div>
+            {/* 排序 */}
+            {[
+              { key: 'default', label: '默认' },
+              { key: 'price_asc', label: '↑价低' },
+              { key: 'price_desc', label: '↓价高' },
+            ].map(s => (
+              <button
+                key={s.key}
+                onClick={() => setListSort(s.key)}
+                style={{
+                  padding: '2px 8px', borderRadius: '6px',
+                  border: '1px solid',
+                  borderColor: listSort === s.key ? oilColor : '#e5e7eb',
+                  background: listSort === s.key ? `${oilColor}18` : '#fff',
+                  color: listSort === s.key ? oilColor : '#9ca3af',
+                  fontSize: '11px', cursor: 'pointer', fontWeight: '500',
+                }}
+              >{s.label}</button>
+            ))}
+          </div>
         </div>
         <div>
-          {regions.sort().map((region, i) => (
+          {displayedRegions.map((region, i) => (
             <ProvinceRow
               key={region}
               region={region}
@@ -254,6 +479,11 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
               index={i}
             />
           ))}
+          {displayedRegions.length === 0 && (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>
+              未找到包含 "{listSearch}" 的省份
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -273,13 +503,16 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
   const load = useCallback(() => {
     setLoading(true)
     setSelectedPoint(null)
+    // 切换省份时先清空旧数据，避免显示旧省份的图
+    setTrendData(null)
     fetch(`${API_BASE}/price-changes?province=${encodeURIComponent(selectedRegion)}&days=${days}`)
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(d => { setTrendData(d); setLoading(false) })
       .catch(() => setLoading(false))
   }, [selectedRegion, days])
 
-  useEffect(() => { load() }, [load])
+  // 直接依赖 selectedRegion 和 days，避免通过 load 引用间接触发
+  useEffect(() => { load() }, [selectedRegion, days])
 
   // 计算统计值
   const calcStats = (history, oilKey) => {
@@ -298,120 +531,144 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
     if (!chartRef.current) return
     if (!echartsReady) return
 
-    const history = trendData?.history || {}
-    const dates = Object.keys(history).sort()
-    const hasData = dates.length > 0
+    // chartRef 可能刚挂载，容器尺寸尚未确定，用 ResizeObserver 监听尺寸变化
+    let ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect
+        if (width > 0 && height > 0 && chartInstance.current) {
+          chartInstance.current.resize()
+        }
+      }
+    })
+    ro.observe(chartRef.current)
 
-    if (!hasData || loading) {
+    // rAF 延迟初始化，等待布局完成
+    let rafId = requestAnimationFrame(() => {
+      const history = trendData?.history || {}
+      const dates = Object.keys(history).sort()
+      const hasData = dates.length > 0
+
+      if (!hasData || loading) {
+        if (chartInstance.current) {
+          chartInstance.current.dispose()
+          chartInstance.current = null
+        }
+        ro.disconnect()
+        return
+      }
+
+      const series = OIL_TYPES.map(oil => ({
+        name: oil.label,
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: { width: 2 },
+        itemStyle: { color: oil.color },
+        data: dates.map(date => history[date]?.[oil.key] ?? null),
+        connectNulls: true,
+      }))
+
+      const startDate = dates[0] || ''
+      const endDate = dates[dates.length - 1] || ''
+
+      const option = {
+        backgroundColor: 'transparent',
+        title: {
+          text: `${selectedRegion} 油价走势（${startDate} ~ ${endDate}）`,
+          left: 'center',
+          top: 5,
+          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#374151' },
+        },
+        legend: {
+          top: 35,
+          left: 'center',
+          itemWidth: 14,
+          itemHeight: 8,
+          textStyle: { fontSize: 11, color: '#6b7280' },
+        },
+        grid: { left: 50, right: 20, top: 70, bottom: 50 },
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: 'rgba(255,255,255,0.95)',
+          borderColor: '#e5e7eb',
+          borderWidth: 1,
+          textStyle: { fontSize: 12, color: '#374151' },
+          formatter: params => {
+            let result = `<div style="font-weight:bold;margin-bottom:4px">${params[0]?.axisValue}</div>`
+            params.forEach(p => {
+              if (p.value !== null) {
+                result += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
+                <span>${p.seriesName}: <b>${p.value}</b> 元/升</span>
+              </div>`
+              }
+            })
+            return result
+          },
+        },
+        xAxis: {
+          type: 'category',
+          data: dates,
+          axisLine: { lineStyle: { color: '#e5e7eb' } },
+          axisLabel: { fontSize: 10, color: '#9ca3af', rotate: 30 },
+          axisTick: { show: false },
+        },
+        yAxis: {
+          type: 'value',
+          scale: true,
+          splitLine: { lineStyle: { color: '#f3f4f6' } },
+          axisLabel: { fontSize: 10, color: '#9ca3af', formatter: v => v.toFixed(2) },
+        },
+        dataZoom: [{
+          type: 'inside',
+          start: 0,
+          end: 100,
+          zoomLock: false,
+        }, {
+          start: 0,
+          end: 100,
+          handleIcon: 'path://M0,0 L0,10 L10,0 Z',
+          handleSize: '80%',
+          handleStyle: { color: '#3b82f6', borderColor: '#3b82f6' },
+          bottom: 10,
+          right: 30,
+        }],
+        series,
+      }
+
+      if (chartInstance.current) {
+        chartInstance.current.setOption(option, true)
+      } else {
+        chartInstance.current = echarts.init(chartRef.current)
+        chartInstance.current.setOption(option, true)
+      }
+
+      // 点击事件：记录选中的点
+      chartInstance.current.off('click')
+      chartInstance.current.on('click', (params) => {
+        if (params.componentType === 'series') {
+          const date = params.name
+          const history = trendData?.history || {}
+          setSelectedPoint({
+            date,
+            values: history[date] || {}
+          })
+        }
+      })
+
+      ro.disconnect()
+    })
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      ro.disconnect()
       if (chartInstance.current) {
         chartInstance.current.dispose()
         chartInstance.current = null
       }
-      return
     }
-
-    const series = OIL_TYPES.map(oil => ({
-      name: oil.label,
-      type: 'line',
-      smooth: true,
-      symbol: 'circle',
-      symbolSize: 6,
-      lineStyle: { width: 2 },
-      itemStyle: { color: oil.color },
-      data: dates.map(date => history[date]?.[oil.key] ?? null),
-      connectNulls: true,
-    }))
-
-    const startDate = dates[0] || ''
-    const endDate = dates[dates.length - 1] || ''
-
-    const option = {
-      backgroundColor: 'transparent',
-      title: {
-        text: `${selectedRegion} 油价走势（${startDate} ~ ${endDate}）`,
-        left: 'center',
-        top: 5,
-        textStyle: { fontSize: 14, fontWeight: 'bold', color: '#374151' },
-      },
-      legend: {
-        top: 35,
-        left: 'center',
-        itemWidth: 14,
-        itemHeight: 8,
-        textStyle: { fontSize: 11, color: '#6b7280' },
-      },
-      grid: { left: 50, right: 20, top: 70, bottom: 50 },
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        borderColor: '#e5e7eb',
-        borderWidth: 1,
-        textStyle: { fontSize: 12, color: '#374151' },
-        formatter: params => {
-          let result = `<div style="font-weight:bold;margin-bottom:4px">${params[0]?.axisValue}</div>`
-          params.forEach(p => {
-            if (p.value !== null) {
-              result += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
-                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
-                <span>${p.seriesName}: <b>${p.value}</b> 元/升</span>
-              </div>`
-            }
-          })
-          return result
-        },
-      },
-      xAxis: {
-        type: 'category',
-        data: dates,
-        axisLine: { lineStyle: { color: '#e5e7eb' } },
-        axisLabel: { fontSize: 10, color: '#9ca3af', rotate: 30 },
-        axisTick: { show: false },
-      },
-      yAxis: {
-        type: 'value',
-        scale: true,
-        splitLine: { lineStyle: { color: '#f3f4f6' } },
-        axisLabel: { fontSize: 10, color: '#9ca3af', formatter: v => v.toFixed(2) },
-      },
-      dataZoom: [{
-        type: 'inside',
-        start: 0,
-        end: 100,
-        zoomLock: false,
-      }, {
-        start: 0,
-        end: 100,
-        handleIcon: 'path://M0,0 L0,10 L10,0 Z',
-        handleSize: '80%',
-        handleStyle: { color: '#3b82f6', borderColor: '#3b82f6' },
-        bottom: 10,
-        right: 30,
-      }],
-      series,
-    }
-
-    if (chartInstance.current) {
-      chartInstance.current.setOption(option, true)
-    } else {
-      chartInstance.current = echarts.init(chartRef.current)
-      chartInstance.current.setOption(option, true)
-    }
-
-    // 点击事件：记录选中的点
-    chartInstance.current.off('click')
-    chartInstance.current.on('click', (params) => {
-      if (params.componentType === 'series') {
-        const date = params.name
-        const history = trendData?.history || {}
-        setSelectedPoint({
-          date,
-          values: history[date] || {}
-        })
-      }
-    })
-
-    return () => {}
-  }, [trendData, loading, selectedRegion])
+  }, [trendData, loading, selectedRegion, days])
 
   // 响应式 resize
   useEffect(() => {
@@ -428,22 +685,10 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
     <div style={{ padding: '16px', paddingBottom: '80px' }}>
       {/* 筛选控制 */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-        <div style={{ flex: 1, background: 'white', borderRadius: '14px', padding: '12px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', fontWeight: '500' }}>选择省份</div>
-          <select
-            value={selectedRegion}
-            onChange={e => setSelectedRegion(e.target.value)}
-            style={{
-              width: '100%', padding: '8px 10px',
-              borderRadius: '8px', border: '1px solid #e5e7eb',
-              fontSize: '14px', background: '#f9fafb', cursor: 'pointer',
-            }}
-          >
-            {regions.sort().map(r => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        </div>
+          <div style={{ flex: 1, background: 'white', borderRadius: '14px', padding: '12px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', fontWeight: '500' }}>选择省份</div>
+            <ProvinceSelector value={selectedRegion} onChange={setSelectedRegion} provinces={regions} />
+          </div>
         <div style={{ background: 'white', borderRadius: '14px', padding: '12px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', minWidth: '90px' }}>
           <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', fontWeight: '500' }}>时间范围</div>
           <div style={{ display: 'flex', gap: '4px' }}>
@@ -743,6 +988,7 @@ function MyPage() {
   const [reminders, setReminders] = useState([])
   const [remindForm, setRemindForm] = useState({ province: '北京', oilType: '92', threshold: '0.1' })
   const [regions, setRegions] = useState(['北京', '上海', '广东', '江苏', '浙江'])
+  const [needLogin, setNeedLogin] = useState(false)
 
   useEffect(() => {
     fetch(`${API_BASE}/health`).then(r => r.json()).then(setHealth).catch(() => {})
@@ -765,7 +1011,7 @@ function MyPage() {
 
   const addReminder = () => {
     const token = localStorage.getItem('token')
-    if (!token) return alert('请先登录')
+    if (!token) { setNeedLogin(true); return }
     fetch(`${API_BASE}/remind`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -863,6 +1109,34 @@ function MyPage() {
       {/* 广告位 */}
       <AdBanner slot="my_page_bottom" style={{ marginTop: '16px' }} />
 
+      {/* 登录引导弹窗 */}
+      {needLogin && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', zIndex: 1001,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }} onClick={() => setNeedLogin(false)}>
+          <div style={{
+            background: 'white', borderRadius: '16px', width: '90%', maxWidth: '320px',
+            padding: '28px 24px', textAlign: 'center'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔐</div>
+            <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1f2937', marginBottom: '8px' }}>登录后使用油价提醒</div>
+            <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '20px', lineHeight: '1.5' }}>
+              油价提醒需要登录才能同步<br />未来可在多设备间同步提醒
+            </div>
+            <button onClick={() => setNeedLogin(false)}
+              style={{ width: '100%', padding: '10px', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer', marginBottom: '8px' }}>
+              稍后再说
+            </button>
+            <button onClick={() => { alert('登录功能开发中'); setNeedLogin(false) }}
+              style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
+              去登录
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 油价提醒弹窗 */}
       {showRemindModal && (
         <div style={{
@@ -942,7 +1216,7 @@ function MyPage() {
 }
 
 // ========== 主应用 ==========
-export default function App() {
+export default function App({ onGotoTrip, onGotoRankings }) {
   const [tab, setTab] = useState('price')
   const [selectedOil, setSelectedOil] = useState('92')
   const [selectedRegion, setSelectedRegion] = useState('北京')
@@ -953,6 +1227,14 @@ export default function App() {
   // 定位状态：{ source, accuracy, message }
   const [locInfo, setLocInfo] = useState(null)
   const [showLocDetail, setShowLocDetail] = useState(false)
+  const [locToast, setLocToast] = useState(null) // 定位省份联动提示
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true')
+
+  // 启动时同步dark mode
+  useEffect(() => {
+    const saved = localStorage.getItem('darkMode') === 'true'
+    document.documentElement.classList.toggle('dark', saved)
+  }, [])
 
   // 加载油价数据
   useEffect(() => {
@@ -1007,6 +1289,8 @@ export default function App() {
         if (matched) {
           setSelectedRegion(matched)
           localStorage.setItem('auto_province', matched)
+          setLocToast(`📍 已定位到 ${matched}，油价已切换`)
+          setTimeout(() => setLocToast(null), 3000)
         }
       })
       .catch((e) => {
@@ -1033,28 +1317,91 @@ export default function App() {
   ]
 
   return (
-    <div style={{ maxWidth: '480px', margin: '0 auto', minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ maxWidth: '480px', margin: '0 auto', minHeight: '100vh', background: 'var(--bg-primary)', fontFamily: 'system-ui, -apple-system, sans-serif', color: 'var(--text-primary)', transition: 'background 0.2s, color 0.2s' }} className={darkMode ? 'dark' : ''}>
       {/* 顶部导航 */}
       <div style={{
-        background: 'white',
+        background: 'var(--bg-secondary)',
         padding: '14px 20px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        boxShadow: 'var(--shadow)',
         position: 'sticky',
         top: 0,
         zIndex: 100,
+        borderBottom: '1px solid var(--border-color)',
+        transition: 'background 0.2s, box-shadow 0.2s',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '22px' }}>⛽</span>
           <span style={{ fontSize: '17px', fontWeight: 'bold', color: '#1f2937' }}>油价守护者</span>
         </div>
-        {updateTime && (
-          <span style={{ fontSize: '11px', color: '#9ca3af', background: '#f3f4f6', padding: '3px 8px', borderRadius: '10px' }}>
-            {updateTime}
-          </span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={onGotoTrip}
+            style={{
+              background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+              border: 'none',
+              borderRadius: '20px',
+              padding: '5px 12px',
+              fontSize: '12px',
+              color: 'white',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
+            }}
+          >
+            🚗 自驾
+          </button>
+          <button
+            onClick={onGotoRankings}
+            style={{
+              background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+              border: 'none',
+              borderRadius: '20px',
+              padding: '5px 12px',
+              fontSize: '12px',
+              color: 'white',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              boxShadow: '0 2px 8px rgba(139,92,246,0.3)',
+            }}
+          >
+            🏆 红蓝榜
+          </button>
+          {updateTime && (
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--bg-tertiary)', padding: '3px 8px', borderRadius: '10px' }}>
+              {updateTime}
+            </span>
+          )}
+          <button
+            onClick={() => {
+              setDarkMode(d => {
+                const next = !d
+                localStorage.setItem('darkMode', String(next))
+                document.documentElement.classList.toggle('dark', next)
+                return next
+              })
+            }}
+            style={{
+              background: darkMode ? '#374151' : '#f3f4f6',
+              border: 'none',
+              borderRadius: '20px',
+              padding: '5px 10px',
+              fontSize: '12px',
+              cursor: 'pointer',
+            }}
+            title={darkMode ? '切换日间模式' : '切换夜间模式'}
+          >
+            {darkMode ? '☀️' : '🌙'}
+          </button>
+        </div>
         {/* 定位状态标签 - 改进版 */}
         {locInfo && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1140,15 +1487,38 @@ export default function App() {
         {tab === 'my' && <MyPage />}
       </div>
 
+      {/* 定位省份联动 Toast */}
+      {locToast && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'linear-gradient(135deg, #10b981, #059669)',
+          color: 'white',
+          padding: '10px 20px',
+          borderRadius: '25px',
+          fontSize: '13px',
+          fontWeight: '500',
+          boxShadow: '0 4px 12px rgba(16,185,129,0.4)',
+          zIndex: 9999,
+          whiteSpace: 'nowrap',
+          animation: 'fadeIn 0.3s ease',
+        }}>
+          {locToast}
+        </div>
+      )}
+
       {/* 底部 TabBar */}
       <div style={{
         position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
         width: '100%', maxWidth: '480px',
-        background: 'white',
-        borderTop: '1px solid #f0f0f0',
+        background: 'var(--bg-secondary)',
+        borderTop: '1px solid var(--border-color)',
         display: 'flex',
         padding: '6px 0 calc(6px + env(safe-area-inset-bottom))',
         boxShadow: '0 -2px 10px rgba(0,0,0,0.04)',
+        transition: 'background 0.2s',
       }}>
         {TABS.map(t => (
           <button

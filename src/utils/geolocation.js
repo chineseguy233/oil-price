@@ -122,7 +122,7 @@ export async function amapReverseGeocode(lng, lat) {
  */
 export async function amapSearchNearby(lat, lng, radius = 5000, page = 1) {
   const offset = 20
-  const url = `https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${lng.toFixed(6)},${lat.toFixed(6)}&types=加油站&radius=${radius}&offset=${offset}&page=${page}&extensions=all`
+  const url = `https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${lng.toFixed(6)},${lat.toFixed(6)}&types=加油站&radius=${radius}&offset=${offset}&page=${page}`
   
   const res = await fetch(url)
   const data = await res.json()
@@ -136,25 +136,36 @@ export async function amapSearchNearby(lat, lng, radius = 5000, page = 1) {
   const totalPage = Math.ceil(total / offset)
 
   const stations = pois.map(p => {
-    // 解析电话
-    const tel = p.tel ? p.tel.replace(/;.*$/, '').trim() : null
+    // 解析电话（高德POI的tel字段可能是null/数组/字符串）
+    let tel = null
+    try {
+      if (p.tel) {
+        const telStr = Array.isArray(p.tel) ? p.tel.join(',') : String(p.tel)
+        tel = telStr.replace(/;.*$/, '').trim() || null
+      }
+    } catch (e) { tel = null }
 
     // 解析营业时间
     let businessHours = null
     let is24h = false
-    const bizInfo = p.business_day || ''
-    if (bizInfo === '全天' || bizInfo.includes('24')) {
-      is24h = true
-    } else if (p.business_time) {
-      businessHours = p.business_time.replace(/;.*$/, '').trim()
-    }
+    try {
+      const bizInfo = p.business_day || ''
+      if (bizInfo === '全天' || bizInfo.includes('24')) {
+        is24h = true
+      } else if (p.business_time) {
+        const bt = Array.isArray(p.business_time) ? p.business_time[0] : String(p.business_time)
+        businessHours = bt.replace(/;.*$/, '').trim() || null
+      }
+    } catch (e) {}
 
     // 解析评分
     let rating = null
-    if (p.grid) {
-      const match = p.grid.match(/(\d+\.?\d*)/)
-      if (match) rating = parseFloat(match[1])
-    }
+    try {
+      if (p.grid) {
+        const match = String(p.grid).match(/(\d+\.?\d*)/)
+        if (match) rating = parseFloat(match[1])
+      }
+    } catch (e) {}
 
     return {
       name: p.name,

@@ -277,7 +277,7 @@ class OilCrawler:
 
         # 统计成功率
         if len(stats['history']) >= 5:
-            successes = sum(1 for e in stats['history'] if e['success'])
+            successes = sum(1 for e in stats['history'] if e.get('success'))
             stats['success_rate'] = round(successes / len(stats['history']) * 100, 1)
 
         with open(STATS_FILE, 'w', encoding='utf-8') as f:

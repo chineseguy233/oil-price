@@ -7,6 +7,12 @@ const app = express();
 app.use(express.json());
 const PORT = 3000;
 
+// 挂载子路由
+const routeRouter = require('./routes/route.cjs');
+const rankingsRouter = require('./routes/rankings.cjs');
+app.use('/api', routeRouter);
+app.use('/api', rankingsRouter);
+
 const USERS_FILE = path.join(__dirname, '../data/users.json');
 
 // 验证码存储 (内存中，5分钟过期)
@@ -241,7 +247,16 @@ app.get('/api/oil-prices', (req, res) => {
     const dataPath = path.join(__dirname, '../data/oil_prices.json');
     try {
         const data = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
-        res.json(data);
+        // 原始 data 结构: { update_time, date, source, fetched_at, prices: {省份: {油号价格}} }
+        // 正确返回: { update_time, date, source, fetched_at, prices: {省份: {油号价格}} }
+        res.json({
+            update_time: data.update_time,
+            last_update: data.last_update,
+            date: data.date,
+            source: data.source,
+            fetched_at: data.fetched_at,
+            prices: data.prices,
+        });
     } catch (e) {
         res.status(500).json({ error: 'Failed to load data' });
     }
@@ -274,7 +289,8 @@ app.get('/api/provinces', (req, res) => {
     const dataPath = path.join(__dirname, '../data/oil_prices.json');
     try {
         const data = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
-        res.json(Object.keys(data.prices || {}));
+        const provinces = Object.keys(data.prices || {}).filter(k => !k.startsWith('_'));
+        res.json(provinces);
     } catch (e) {
         res.status(500).json({ error: 'Failed to load data' });
     }
@@ -284,19 +300,49 @@ app.get('/api/provinces', (req, res) => {
 app.get('/api/oil-history', (req, res) => {
     const days = parseInt(req.query.days) || 30;
     const province = req.query.province || '全国均价';
-    
+    const oilType = req.query.oil_type || '92';
+
     const historyPath = path.join(__dirname, '../data/oil_history.json');
     try {
         const allHistory = JSON.parse(fs.readFileSync(historyPath, 'utf-8'));
-        const provinceHistory = allHistory[province] || allHistory['全国均价'] || {};
-        
+
+        // 如果请求全国均价，动态计算各省份的加权平均（仅统计有数据的省份）
+        if (province === '全国均价' || province === '全国') {
+            // 收集所有有数据的日期
+            const allDates = new Set();
+            for (const provHistory of Object.values(allHistory)) {
+                for (const date of Object.keys(provHistory)) {
+                    allDates.add(date);
+                }
+            }
+            const sortedDates = [...allDates].sort().slice(-days);
+
+            // 计算每一天的全国均价
+            const history = {};
+            for (const date of sortedDates) {
+                const prices = [];
+                for (const [prov, provHistory] of Object.entries(allHistory)) {
+                    if (provHistory[date] && provHistory[date][oilType] != null) {
+                        prices.push(provHistory[date][oilType]);
+                    }
+                }
+                if (prices.length > 0) {
+                    const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+                    history[date] = { [oilType]: parseFloat(avg.toFixed(3)) };
+                }
+            }
+            return res.json({ province: '全国均价', days, oil_type: oilType, history });
+        }
+
+        const provinceHistory = allHistory[province] || {};
+
         // 获取最近days天的数据
         const dates = Object.keys(provinceHistory).sort().slice(-days);
         const history = {};
         dates.forEach(date => {
             history[date] = provinceHistory[date];
         });
-        
+
         res.json({ province, days, history });
     } catch (e) {
         res.json({ province, days, history: {} });
