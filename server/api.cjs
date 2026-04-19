@@ -280,6 +280,29 @@ app.get('/api/provinces', (req, res) => {
     }
 });
 
+// ============ 油价历史趋势API（供趋势图直接调用） ============
+app.get('/api/oil-history', (req, res) => {
+    const days = parseInt(req.query.days) || 30;
+    const province = req.query.province || '全国均价';
+    
+    const historyPath = path.join(__dirname, '../data/oil_history.json');
+    try {
+        const allHistory = JSON.parse(fs.readFileSync(historyPath, 'utf-8'));
+        const provinceHistory = allHistory[province] || allHistory['全国均价'] || {};
+        
+        // 获取最近days天的数据
+        const dates = Object.keys(provinceHistory).sort().slice(-days);
+        const history = {};
+        dates.forEach(date => {
+            history[date] = provinceHistory[date];
+        });
+        
+        res.json({ province, days, history });
+    } catch (e) {
+        res.json({ province, days, history: {} });
+    }
+});
+
 // ============ 健康检查API ============
 
 // 数据新鲜度检查

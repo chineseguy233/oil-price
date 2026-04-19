@@ -20,77 +20,60 @@ const OIL_COLORS = { '92': '#3b82f6', '95': '#8b5cf6', '98': '#f59e0b', '0': '#1
 const AD_BANNER_SLOT = 'home_top_banner'
 const AD_LIST_SLOT = 'province_list_item'
 
-// 模拟广告数据
-function AdBanner({ slot, style }) {
-  const [ad, setAd] = useState(null)
-  useEffect(() => {
-    setAd({ title: '广告位招租', sub: '汽车服务·品牌推广', link: '#' })
-  }, [slot])
-  if (!ad) return null
+// 实用信息 Banner
+function InfoBanner({ style }) {
+  const tips = [
+    { icon: '⏰', text: '数据每日更新，实际价格以加油站为准' },
+    { icon: '📍', text: '点击加油站页面，查看附近油站实时油价' },
+    { icon: '📊', text: '趋势页面可查看30天历史油价走势' },
+  ]
+  const [tip] = useState(() => tips[Math.floor(Math.random() * tips.length)])
+
   return (
-    <a href={ad.link} style={{
-      display: 'block',
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '10px',
       margin: '12px 16px',
       padding: '12px 16px',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
       borderRadius: '12px',
-      color: 'white',
-      textDecoration: 'none',
+      border: '1px solid #bbf7d0',
       ...style,
     }}>
-      <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{ad.title}</div>
-      <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '2px' }}>{ad.sub}</div>
-    </a>
+      <span style={{ fontSize: '18px', flexShrink: 0 }}>{tip.icon}</span>
+      <span style={{ fontSize: '13px', color: '#15803d', lineHeight: 1.4 }}>{tip.text}</span>
+    </div>
   )
 }
 
-// 省油价列表项（带广告位）
+// 省油价列表项
 function ProvinceRow({ region, price, oilType, index }) {
-  const [ad] = useState(() => {
-    return index > 0 && index % 5 === 0
-      ? { title: '精选服务', sub: '广告', color: '#f59e0b' }
-      : null
-  })
-
   return (
-    <>
-      {ad && (
+    <div style={{
+      padding: '14px 16px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      background: index % 2 === 0 ? '#ffffff' : '#f9fafb',
+      borderBottom: '1px solid #f3f4f6',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <div style={{
-          padding: '10px 16px',
-          background: 'linear-gradient(90deg, #fef3c7 0%, #fde68a 100%)',
-          borderRadius: '8px',
-          margin: '4px 16px',
-          cursor: 'pointer',
+          width: '36px', height: '36px', borderRadius: '10px',
+          background: `linear-gradient(135deg, ${OIL_COLORS[oilType]}22, ${OIL_COLORS[oilType]}44)`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '12px', fontWeight: 'bold', color: OIL_COLORS[oilType],
         }}>
-          <span style={{ fontSize: '12px', color: '#92400e' }}>🔥 {ad.title}</span>
-          <span style={{ fontSize: '11px', color: '#b45309', marginLeft: '8px' }}>{ad.sub}</span>
+          {region.slice(0, 2)}
         </div>
-      )}
-      <div style={{
-        padding: '14px 16px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        background: index % 2 === 0 ? '#ffffff' : '#f9fafb',
-        borderBottom: '1px solid #f3f4f6',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '36px', height: '36px', borderRadius: '10px',
-            background: `linear-gradient(135deg, ${OIL_COLORS[oilType]}22, ${OIL_COLORS[oilType]}44)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '12px', fontWeight: 'bold', color: OIL_COLORS[oilType],
-          }}>
-            {region.slice(0, 2)}
-          </div>
-          <span style={{ fontSize: '15px', color: '#374151', fontWeight: '500' }}>{region}</span>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <span style={{ fontSize: '18px', fontWeight: 'bold', color: OIL_COLORS[oilType] }}>{price ?? '—'}</span>
-          <span style={{ fontSize: '12px', color: '#9ca3af', marginLeft: '2px' }}>元/升</span>
-        </div>
+        <span style={{ fontSize: '15px', color: '#374151', fontWeight: '500' }}>{region}</span>
       </div>
-    </>
+      <div style={{ textAlign: 'right' }}>
+        <span style={{ fontSize: '18px', fontWeight: 'bold', color: OIL_COLORS[oilType] }}>{price ?? '—'}</span>
+        <span style={{ fontSize: '12px', color: '#9ca3af', marginLeft: '2px' }}>元/升</span>
+      </div>
+    </div>
   )
 }
 
@@ -113,8 +96,8 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
 
   return (
     <div style={{ paddingBottom: '80px' }}>
-      {/* 顶部 Banner 广告 */}
-      {showAdBanner && <AdBanner slot={AD_BANNER_SLOT} />}
+      {/* 实用信息 Banner */}
+      {showAdBanner && <InfoBanner />}
 
       {/* 主油价卡片 */}
       <div style={{
@@ -291,12 +274,24 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
     setLoading(true)
     setSelectedPoint(null)
     fetch(`${API_BASE}/price-changes?province=${encodeURIComponent(selectedRegion)}&days=${days}`)
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(d => { setTrendData(d); setLoading(false) })
       .catch(() => setLoading(false))
   }, [selectedRegion, days])
 
   useEffect(() => { load() }, [load])
+
+  // 计算统计值
+  const calcStats = (history, oilKey) => {
+    const values = Object.values(history).map(h => h[oilKey]).filter(v => v != null)
+    if (values.length === 0) return null
+    const avg = values.reduce((a, b) => a + b, 0) / values.length
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+    const latest = values[values.length - 1]
+    const change = values.length > 1 ? latest - values[0] : 0
+    return { avg: avg.toFixed(2), min: min.toFixed(2), max: max.toFixed(2), latest: latest.toFixed(2), change: change.toFixed(2) }
+  }
 
   // 初始化和更新图表
   useEffect(() => {
@@ -345,7 +340,7 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
         itemHeight: 8,
         textStyle: { fontSize: 11, color: '#6b7280' },
       },
-      grid: { left: 50, right: 20, top: 70, bottom: 40 },
+      grid: { left: 50, right: 20, top: 70, bottom: 50 },
       tooltip: {
         trigger: 'axis',
         backgroundColor: 'rgba(255,255,255,0.95)',
@@ -378,6 +373,20 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
         splitLine: { lineStyle: { color: '#f3f4f6' } },
         axisLabel: { fontSize: 10, color: '#9ca3af', formatter: v => v.toFixed(2) },
       },
+      dataZoom: [{
+        type: 'inside',
+        start: 0,
+        end: 100,
+        zoomLock: false,
+      }, {
+        start: 0,
+        end: 100,
+        handleIcon: 'path://M0,0 L0,10 L10,0 Z',
+        handleSize: '80%',
+        handleStyle: { color: '#3b82f6', borderColor: '#3b82f6' },
+        bottom: 10,
+        right: 30,
+      }],
       series,
     }
 
@@ -457,6 +466,28 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
         </div>
       </div>
 
+      {/* 统计卡片 */}
+      {trendData && trendData.history && Object.keys(trendData.history).length > 0 && (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          {OIL_TYPES.filter(t => calcStats(trendData.history, t.key)).slice(0, 2).map(t => {
+            const s = calcStats(trendData.history, t.key)
+            return (
+              <div key={t.key} style={{
+                flex: 1, background: 'white', borderRadius: '12px', padding: '12px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)', textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '4px' }}>{t.label}</div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', color: t.color }}>{s.latest}</div>
+                <div style={{ fontSize: '10px', color: parseFloat(s.change) >= 0 ? '#ef4444' : '#10b981', marginTop: '2px' }}>
+                  {parseFloat(s.change) >= 0 ? '▲' : '▼'} {Math.abs(parseFloat(s.change))}元
+                </div>
+                <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>均值{s.avg}</div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {/* 趋势图表 */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
         {loading || !echartsReady ? (
@@ -516,11 +547,117 @@ function TrendPage({ selectedRegion, setSelectedRegion, regions }) {
 function FuelPage() {
   const [records, setRecords] = useState([])
   const [form, setForm] = useState({ date: '', distance: '', amount: '', price: '' })
+  const fuelChartRef = useRef(null)
+  const fuelChartInstance = useRef(null)
+
+  // 计算统计数据
+  const calcFuelStats = () => {
+    if (records.length === 0) return null
+    let totalFuel = 0, totalKm = 0, totalCost = 0
+    records.forEach(r => {
+      totalFuel += parseFloat(r.amount) || 0
+      totalKm += parseFloat(r.distance) || 0
+      totalCost += parseFloat(r.price) || 0
+    })
+    const avgConsumption = totalKm > 0 ? (totalFuel / totalKm * 100).toFixed(1) : '--'
+    const avgCostPerRecord = records.length > 0 ? (totalCost / records.length).toFixed(0) : '--'
+    return { totalRecords: records.length, totalKm, totalFuel: totalFuel.toFixed(1), totalCost: totalCost.toFixed(0), avgConsumption, avgCostPerRecord }
+  }
+
+  // 渲染油耗曲线
+  useEffect(() => {
+    if (!fuelChartRef.current || records.length < 2) return
+    if (fuelChartInstance.current) {
+      fuelChartInstance.current.dispose()
+      fuelChartInstance.current = null
+    }
+    const validRecords = records.slice().reverse()
+    const dates = validRecords.map(r => r.date)
+    const consumptions = validRecords.map(r => parseFloat(r.consumption) || 0)
+
+    const option = {
+      backgroundColor: 'transparent',
+      grid: { left: 45, right: 15, top: 30, bottom: 30 },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        borderColor: '#e5e7eb',
+        textStyle: { fontSize: 12 },
+        formatter: p => `${p[0].name}<br/><b>${p[0].value}</b> L/100km`
+      },
+      xAxis: {
+        type: 'category', data: dates,
+        axisLabel: { fontSize: 9, color: '#9ca3af', rotate: 30 },
+        axisLine: { lineStyle: { color: '#e5e7eb' } },
+        axisTick: { show: false },
+      },
+      yAxis: {
+        type: 'value', scale: true,
+        axisLabel: { fontSize: 10, color: '#9ca3af', formatter: v => v.toFixed(1) },
+        splitLine: { lineStyle: { color: '#f3f4f6' } },
+      },
+      series: [{
+        name: '油耗',
+        type: 'line', smooth: true,
+        lineStyle: { width: 2, color: '#3b82f6' },
+        itemStyle: { color: '#3b82f6' },
+        areaStyle: { color: 'rgba(59,130,246,0.1)' },
+        data: consumptions,
+        connectNulls: true,
+      }],
+    }
+    fuelChartInstance.current = echarts.init(fuelChartRef.current)
+    fuelChartInstance.current.setOption(option, true)
+    return () => {}
+  }, [records])
+
+  // 响应式
+  useEffect(() => {
+    const h = () => fuelChartInstance.current?.resize()
+    window.addEventListener('resize', h)
+    return () => window.removeEventListener('resize', h)
+  }, [])
+
+  const stats = calcFuelStats()
 
   return (
     <div style={{ padding: '16px', paddingBottom: '80px' }}>
+      {/* 统计卡片 */}
+      {stats && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '4px' }}>百公里油耗</div>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#3b82f6' }}>{stats.avgConsumption}</div>
+            <div style={{ fontSize: '10px', color: '#9ca3af' }}>L/100km</div>
+          </div>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '4px' }}>平均单次花费</div>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#10b981' }}>¥{stats.avgCostPerRecord}</div>
+            <div style={{ fontSize: '10px', color: '#9ca3af' }}>元/次</div>
+          </div>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '4px' }}>累计行驶</div>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#6b7280' }}>{stats.totalKm}</div>
+            <div style={{ fontSize: '10px', color: '#9ca3af' }}>公里</div>
+          </div>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '4px' }}>累计加油</div>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#f59e0b' }}>{stats.totalFuel}</div>
+            <div style={{ fontSize: '10px', color: '#9ca3af' }}>升</div>
+          </div>
+        </div>
+      )}
+
+      {/* 油耗历史曲线 */}
+      {records.length >= 2 && (
+        <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#374151', marginBottom: '12px' }}>📈 油耗曲线</div>
+          <div ref={fuelChartRef} style={{ width: '100%', height: '200px' }} />
+        </div>
+      )}
+
       <div style={{ background: 'white', borderRadius: '16px', padding: '20px', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-        <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', color: '#374151' }}>📊 油耗记录</div>
+        <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', color: '#374151' }}>📊 加油记录</div>
         {/* 录入表单 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
           <input
@@ -815,6 +952,7 @@ export default function App() {
   const [hoursOld, setHoursOld] = useState(null) // 数据新鲜度
   // 定位状态：{ source, accuracy, message }
   const [locInfo, setLocInfo] = useState(null)
+  const [showLocDetail, setShowLocDetail] = useState(false)
 
   // 加载油价数据
   useEffect(() => {
@@ -919,22 +1057,62 @@ export default function App() {
         )}
         {/* 定位状态标签 - 改进版 */}
         {locInfo && (
-          <span style={{
-            fontSize: '11px',
-            color: locInfo.source === 'gps' ? '#10b981' : locInfo.source === 'ip' ? '#f59e0b' : locInfo.source === 'error' || locInfo.source === 'none' ? '#ef4444' : '#2563eb',
-            background: locInfo.source === 'gps' ? '#f0fdf4' : locInfo.source === 'ip' ? '#fffbeb' : locInfo.source === 'error' || locInfo.source === 'none' ? '#fef2f2' : '#eff6ff',
-            padding: '3px 8px',
-            borderRadius: '10px',
-            maxWidth: '120px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-            title={locInfo.message}
-          >
-            {locInfo.source === 'gps' ? '🛰 GPS' : locInfo.source === 'ip' ? '🌐 网络定位' : locInfo.source === 'error' || locInfo.source === 'none' ? '⚠️ 定位' : '📍'}
-            {locInfo.accuracy === 'low' ? ' ⚠️' : ''}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {/* 刷新定位按钮 */}
+            <button onClick={() => {
+              if (navigator.geolocation) {
+                setLocInfo({ source: 'loading', accuracy: 'none', message: '定位中...' })
+                autoLocate().then(loc => {
+                  setLocInfo({ source: loc.source, accuracy: loc.accuracy, message: loc.message })
+                  const matched = Object.keys(oilData || {}).find(p =>
+                    p.includes(loc.province.replace(/[省市]$/, '')) || loc.province.includes(p)
+                  )
+                  if (matched) { setSelectedRegion(matched); localStorage.setItem('auto_province', matched) }
+                }).catch(e => setLocInfo({ source: 'error', accuracy: 'none', message: e.message || '定位失败' }))
+              }
+            }} title="刷新定位" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', padding: '2px 4px', borderRadius: '4px', color: '#6b7280' }}>🔄</button>
+            <span
+              onClick={() => locInfo.source === 'error' || locInfo.source === 'none' || locInfo.accuracy === 'low' ? setShowLocDetail(true) : null}
+              style={{
+                fontSize: '11px',
+                color: locInfo.source === 'gps' ? '#10b981' : locInfo.source === 'ip' ? '#f59e0b' : locInfo.source === 'error' || locInfo.source === 'none' ? '#ef4444' : locInfo.source === 'loading' ? '#6b7280' : '#2563eb',
+                background: locInfo.source === 'gps' ? '#f0fdf4' : locInfo.source === 'ip' ? '#fffbeb' : locInfo.source === 'error' || locInfo.source === 'none' ? '#fef2f2' : locInfo.source === 'loading' ? '#f9fafb' : '#eff6ff',
+                padding: '3px 8px',
+                borderRadius: '10px',
+                maxWidth: '120px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                cursor: locInfo.source === 'error' || locInfo.source === 'none' || locInfo.accuracy === 'low' ? 'pointer' : 'default',
+              }}
+              title={locInfo.source === 'gps' ? 'GPS定位：精度最高，适用于户外' : locInfo.source === 'ip' ? '网络定位：精度较低，城市级别' : locInfo.source === 'error' ? '定位失败：点击查看原因' : locInfo.source === 'none' ? '浏览器不支持定位' : '点击了解定位方式'}
+            >
+              {locInfo.source === 'gps' ? '🛰 GPS' : locInfo.source === 'ip' ? '🌐 网络定位' : locInfo.source === 'error' || locInfo.source === 'none' ? '⚠️ 定位' : locInfo.source === 'loading' ? '⏳ 定位中' : '📍'}
+              {locInfo.accuracy === 'low' ? ' ⚠️' : ''}
+            </span>
+          </div>
+        )}
+        {/* 定位说明弹窗 */}
+        {showLocDetail && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowLocDetail(false)}>
+            <div style={{ background: 'white', borderRadius: '16px', width: '85%', maxWidth: '320px', padding: '24px' }} onClick={e => e.stopPropagation()}>
+              <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', textAlign: 'center' }}>定位方式说明</div>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: '14px', color: '#10b981', fontWeight: 'bold', marginBottom: '4px' }}>🛰 GPS 定位</div>
+                <div style={{ fontSize: '12px', color: '#6b7280' }}>使用手机GPS模块，精度最高（10米内），适合户外使用。首次定位可能需要几秒到几十秒。</div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: '14px', color: '#f59e0b', fontWeight: 'bold', marginBottom: '4px' }}>🌐 网络定位</div>
+                <div style={{ fontSize: '12px', color: '#6b7280' }}>通过IP地址或WiFi确定位置，精度较低（城市级别），但定位速度快，室内可用。</div>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ fontSize: '14px', color: '#ef4444', fontWeight: 'bold', marginBottom: '4px' }}>⚠️ 定位失败</div>
+                <div style={{ fontSize: '12px', color: '#6b7280' }}>{locInfo?.message || '无法获取位置信息'}。可尝试：开启定位权限、使用VPN、切换网络或手动选择省份。</div>
+              </div>
+              <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'center', marginBottom: '12px' }}>点击"🔄"按钮可重新定位</div>
+              <button onClick={() => setShowLocDetail(false)} style={{ width: '100%', padding: '10px', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>知道了</button>
+            </div>
+          </div>
         )}
       </div>
 

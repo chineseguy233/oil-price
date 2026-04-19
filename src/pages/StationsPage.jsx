@@ -3,12 +3,22 @@ import { autoLocate, amapSearchNearby } from '../utils/geolocation'
 
 const API_BASE = '/api'
 
-// 省份列表
+// 省份列表（按区域分组）
 const PROVINCES = [
-  '北京', '上海', '广东', '江苏', '浙江', '四川', '湖北', '湖南',
-  '河南', '河北', '山东', '山西', '陕西', '安徽', '福建', '江西',
-  '辽宁', '吉林', '黑龙江', '内蒙古', '新疆', '甘肃', '青海', '宁夏',
-  '西藏', '云南', '贵州', '广西', '海南', '天津', '重庆'
+  // 华北
+  '北京', '天津', '河北', '山西', '内蒙古',
+  // 东北
+  '辽宁', '吉林', '黑龙江',
+  // 华东
+  '上海', '江苏', '浙江', '安徽', '福建', '江西', '山东',
+  // 华中
+  '河南', '湖北', '湖南',
+  // 华南
+  '广东', '广西', '海南',
+  // 西南
+  '重庆', '四川', '贵州', '云南', '西藏',
+  // 西北
+  '陕西', '甘肃', '青海', '宁夏', '新疆',
 ]
 
 // 附近半径选项
@@ -40,12 +50,108 @@ function navigateTo(location, name) {
   window.open(url, '_blank')
 }
 
+// ========== 简易地图示意图 ==========
+function MiniMap({ stations, userLocation, radius }) {
+  const size = 120
+  const center = size / 2
+
+  // 将经纬度转换为相对位置（简化计算）
+  const lngRange = radius / 111000 // 约111km每度
+  const latRange = radius / 111000
+
+  const toPos = (lng, lat) => {
+    const x = center + ((lng - userLocation.lng) / lngRange) * (size / 2 - 10)
+    const y = center - ((lat - userLocation.lat) / latRange) * (size / 2 - 10)
+    return {
+      x: Math.max(5, Math.min(size - 5, x)),
+      y: Math.max(5, Math.min(size - 5, y)),
+    }
+  }
+
+  return (
+    <div style={{
+      background: '#f8fafc',
+      borderRadius: '12px',
+      padding: '12px',
+      marginBottom: '12px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+    }}>
+      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px', fontWeight: '500' }}>📍 油站分布示意</div>
+      <div style={{
+        position: 'relative',
+        width: `${size}px`,
+        height: `${size}px`,
+        margin: '0 auto',
+        background: 'linear-gradient(135deg, #e0f2fe 0%, #f0fdf4 100%)',
+        borderRadius: '50%',
+        border: '2px solid #bfdbfe',
+        overflow: 'hidden',
+      }}>
+        {/* 定位中心点 */}
+        <div style={{
+          position: 'absolute',
+          left: `${center - 4}px`,
+          top: `${center - 4}px`,
+          width: '8px',
+          height: '8px',
+          background: '#2563eb',
+          borderRadius: '50%',
+          border: '2px solid white',
+          boxShadow: '0 0 0 2px #2563eb',
+          zIndex: 10,
+        }} />
+        {/* 辐射圈 */}
+        <div style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '60%',
+          height: '60%',
+          border: '1px dashed #93c5fd',
+          borderRadius: '50%',
+        }} />
+        {/* 加油站标记 */}
+        {stations.slice(0, 12).map((s, i) => {
+          if (!s.location) return null
+          const [lng, lat] = s.location.split(',')
+          const pos = toPos(parseFloat(lng), parseFloat(lat))
+          return (
+            <div
+              key={i}
+              title={s.name}
+              style={{
+                position: 'absolute',
+                left: `${pos.x - 3}px`,
+                top: `${pos.y - 3}px`,
+                width: '6px',
+                height: '6px',
+                background: '#f59e0b',
+                borderRadius: '50%',
+                border: '1px solid white',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                cursor: 'pointer',
+              }}
+            />
+          )
+        })}
+      </div>
+      <div style={{ textAlign: 'center', fontSize: '10px', color: '#9ca3af', marginTop: '6px' }}>
+        中心为您的位置 · 共{stations.length}个油站
+      </div>
+    </div>
+  )
+}
+
 // ========== 加油站卡片（增强版）============
 function StationCard({ station, sortKey, provincePrice }) {
   const hasPrice = station.price92 != null || station.price95 != null
   const avgPrice = station.price92 != null && station.price95 != null
     ? ((station.price92 + station.price95) / 2).toFixed(2)
     : (station.price92 || station.price95)?.toFixed(2)
+
+  const isCheap = sortKey === 'price92' || sortKey === 'price95'
+  const discount = station.discount || null
 
   return (
     <div style={{
@@ -54,21 +160,41 @@ function StationCard({ station, sortKey, provincePrice }) {
       padding: '16px',
       marginBottom: '12px',
       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+      border: isCheap ? '1px solid #fef3c7' : '1px solid transparent',
+      position: 'relative',
+      overflow: 'hidden',
     }}>
+      {/* 左侧价格优势标签 */}
+      {isCheap && station.price92 != null && (
+        <div style={{
+          position: 'absolute',
+          top: '0',
+          right: '0',
+          background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+          color: 'white',
+          fontSize: '10px',
+          padding: '2px 8px',
+          borderBottomLeftRadius: '8px',
+          fontWeight: '600',
+        }}>
+          较便宜
+        </div>
+      )}
+
       {/* 第一行：名称 + 距离 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#1f2937', marginBottom: '4px' }}>
+          <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#1f2937', marginBottom: '4px', paddingRight: '50px' }}>
             {station.name}
           </div>
-          <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+          <div style={{ fontSize: '12px', color: '#9ca3af', lineHeight: '1.4' }}>
             {station.address || '地址未知'}
-            {station.businessHours && (
-              <span style={{ marginLeft: '8px', color: station.is24h ? '#10b981' : '#6b7280' }}>
-                {station.is24h ? '🕐 24小时营业' : `⏰ ${station.businessHours}`}
-              </span>
-            )}
           </div>
+          {station.businessHours && (
+            <div style={{ marginTop: '4px', fontSize: '11px', color: station.is24h ? '#10b981' : '#6b7280' }}>
+              {station.is24h ? '🕐 24小时营业' : `⏰ ${station.businessHours}`}
+            </div>
+          )}
         </div>
         <div style={{
           background: '#f3f4f6',
@@ -93,7 +219,7 @@ function StationCard({ station, sortKey, provincePrice }) {
           textAlign: 'center',
         }}>
           <div style={{ fontSize: '11px', color: '#92400e', marginBottom: '2px' }}>92#汽油</div>
-          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#d97706' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#d97706' }}>
             {station.price92 != null ? `¥${station.price92}` : '—'}
           </div>
           {!station.price92 && provincePrice && (
@@ -108,7 +234,7 @@ function StationCard({ station, sortKey, provincePrice }) {
           textAlign: 'center',
         }}>
           <div style={{ fontSize: '11px', color: '#6d28d9', marginBottom: '2px' }}>95#汽油</div>
-          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#7c3aed' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#7c3aed' }}>
             {station.price95 != null ? `¥${station.price95}` : '—'}
           </div>
           {!station.price95 && provincePrice && (
@@ -119,15 +245,18 @@ function StationCard({ station, sortKey, provincePrice }) {
 
       {/* 第三行：品牌 + 评分 + 电话 + 导航按钮 */}
       <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{
-          padding: '4px 10px',
-          background: '#f0fdf4',
-          borderRadius: '8px',
-          fontSize: '11px',
-          color: '#15803d',
-        }}>
-          {station.brand || '民营'}
-        </div>
+        {station.brand && (
+          <div style={{
+            padding: '4px 10px',
+            background: '#f0fdf4',
+            borderRadius: '8px',
+            fontSize: '11px',
+            color: '#15803d',
+            fontWeight: '500',
+          }}>
+            ⛽ {station.brand}
+          </div>
+        )}
 
         {station.rating && (
           <div style={{
@@ -138,6 +267,19 @@ function StationCard({ station, sortKey, provincePrice }) {
             color: '#c2410c',
           }}>
             ⭐ {station.rating.toFixed(1)}
+          </div>
+        )}
+
+        {discount && (
+          <div style={{
+            padding: '4px 10px',
+            background: '#fef2f2',
+            borderRadius: '8px',
+            fontSize: '11px',
+            color: '#dc2626',
+            fontWeight: '600',
+          }}>
+            🎁 {discount}
           </div>
         )}
 
@@ -510,8 +652,25 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
           fontSize: '11px',
           color: '#3b82f6',
         }}>
-          💡 附近数据来自高德地图。油价为该省参考价，实际价格以加油站为准
+          💡 数据来源：高德地图POI · 油价为该省参考均价 · 实际价格以加油站为准
         </div>
+      )}
+      {searchMode === 'province' && (
+        <div style={{
+          background: '#fef3c7',
+          borderRadius: '10px',
+          padding: '8px 12px',
+          marginBottom: '12px',
+          fontSize: '11px',
+          color: '#92400e',
+        }}>
+          📊 数据来源：各省油价统计平台 · 显示该省油价参考区间 · 实际价格以当地加油站为准
+        </div>
+      )}
+
+      {/* 简易地图示意（仅附近模式且定位成功后显示） */}
+      {searchMode === 'nearby' && userLocation && stations.length > 0 && (
+        <MiniMap stations={stations} userLocation={userLocation} radius={radius} />
       )}
 
       {/* 加油站列表 */}
