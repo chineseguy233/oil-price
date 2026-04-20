@@ -73,15 +73,27 @@ export default function FuelPage() {
       Taro.showToast({ title: '请填写完整', icon: 'none' })
       return
     }
-    
+
+    const newKm = parseFloat(r.km)
+    const newDate = r.date
+
+    // 校验：里程（仪表盘读数）只增不减，不受日期顺序影响
+    if (records.length > 0) {
+      const maxKm = Math.max(...records.map(r => r.km))
+      if (newKm <= maxKm) {
+        Taro.showToast({ title: '里程数应大于仪表盘读数', icon: 'none' })
+        return
+      }
+    }
+
     const newData = [{
-      date: r.date,
-      km: parseFloat(r.km),
+      date: newDate,
+      km: newKm,
       fuel: parseFloat(r.fuel),
       pricePerL: parseFloat(r.pricePerL) || (parseFloat(r.price) / parseFloat(r.fuel)),
       price: parseFloat(r.price)
     }, ...records]
-    
+
     saveRecords(newData)
     setShowModal(false)
     setNewRecord({ date: '', km: '', fuel: '', pricePerL: '', price: '' })
