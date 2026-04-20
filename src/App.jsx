@@ -1219,45 +1219,21 @@ function getMonitorProvinces(mainProvince) {
   return [mainProvince, ...neighbors.slice(0, 2)]
 }
 
-// ========== 我的页面 ==========
-function MyPage({ selectedRegion }) {
-  const [health, setHealth] = useState(null)
-  const [showRemindModal, setShowRemindModal] = useState(false)
-  const [regions, setRegions] = useState(['北京', '上海', '广东', '江苏', '浙江'])
-  const [historyData, setHistoryData] = useState(null) // 历史油价数据
-  const [loadingHistory, setLoadingHistory] = useState(false)
-
-  // 登录状态
-  const [user, setUser] = useState(() => {
-    const token = localStorage.getItem('oil_token')
-    const phone = localStorage.getItem('oil_user_phone')
-    return token && phone ? { token, phone } : null
-  })
-  const [showLoginModal, setShowLoginModal] = useState(false)
+// ========== 登录弹窗（全局）============
+function LoginModal({ visible, onClose, onLoginSuccess }) {
   const [loginForm, setLoginForm] = useState({ phone: '', code: '', password: '' })
   const [loginBtnText, setLoginBtnText] = useState('获取验证码')
   const [loginLoading, setLoginLoading] = useState(false)
   const [loginError, setLoginError] = useState('')
   const [countdown, setCountdown] = useState(0)
 
-  // 提醒配置（自动判断阈值，无需用户设定）
-  const [remindConfig, setRemindConfig] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('oil_remind_config') || 'null') } catch { return null }
-  })
-  const [configForm, setConfigForm] = useState({ province: '北京', oilType: '92' })
-
-  // 发送验证码
   const sendCode = useCallback(() => {
     const phone = loginForm.phone
-    if (!/^1\d{10}$/.test(phone)) {
-      setLoginError('请输入正确的手机号')
-      return
-    }
+    if (!/^1\d{10}$/.test(phone)) { setLoginError('请输入正确的手机号'); return }
     setLoginLoading(true)
     setLoginError('')
     fetch(`${API_BASE}/auth/code`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone }),
     }).then(r => r.json()).then(data => {
       if (data.success) {
@@ -1276,7 +1252,6 @@ function MyPage({ selectedRegion }) {
     }).catch(() => setLoginError('网络错误')).finally(() => setLoginLoading(false))
   }, [loginForm.phone])
 
-  // 登录
   const handleLogin = useCallback(() => {
     const { phone, code } = loginForm
     if (!phone || !/^1\d{10}$/.test(phone)) { setLoginError('请输入手机号'); return }
@@ -1284,36 +1259,91 @@ function MyPage({ selectedRegion }) {
     setLoginLoading(true)
     setLoginError('')
     fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone, code, password: loginForm.password }),
     }).then(r => r.json()).then(data => {
       if (data.success) {
         localStorage.setItem('oil_token', data.token)
         localStorage.setItem('oil_user_phone', data.user.phone)
-        setUser({ token: data.token, phone: data.user.phone })
-        setShowLoginModal(false)
+        onLoginSuccess({ token: data.token, phone: data.user.phone })
         setLoginForm({ phone: '', code: '', password: '' })
         setLoginError('')
+        onClose()
       } else {
         setLoginError(data.error || '登录失败')
       }
     }).catch(() => setLoginError('网络错误')).finally(() => setLoginLoading(false))
-  }, [loginForm])
+  }, [loginForm, onLoginSuccess, onClose])
 
-  // 登出
-  const handleLogout = useCallback(() => {
-    const token = localStorage.getItem('oil_token')
-    if (token) {
-      fetch(`${API_BASE}/auth/logout`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {})
-    }
-    localStorage.removeItem('oil_token')
-    localStorage.removeItem('oil_user_phone')
-    setUser(null)
-  }, [])
+  if (!visible) return null
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.5)', zIndex: 1001,
+      display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }} onClick={onClose}>
+      <div style={{
+        background: 'white', borderRadius: '16px', width: '90%', maxWidth: '360px',
+        maxHeight: '80vh', overflow: 'auto', padding: '24px'
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '20px', textAlign: 'center' }}>
+          登录油价守护者
+        </div>
+        {loginError && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px', marginBottom: '12px', fontSize: '13px', color: '#dc2626', textAlign: 'center' }}>
+            {loginError}
+          </div>
+        )}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>手机号</label>
+          <input type="tel" maxLength={11} value={loginForm.phone}
+            onChange={e => setLoginForm({...loginForm, phone: e.target.value.replace(/\D/g, '')})}
+            placeholder="请输入手机号"
+            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px', boxSizing: 'border-box' }} />
+        </div>
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>验证码</label>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input type="text" maxLength={6} value={loginForm.code}
+              onChange={e => setLoginForm({...loginForm, code: e.target.value.replace(/\D/g, '')})}
+              placeholder="6位验证码"
+              style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px' }} />
+            <button onClick={sendCode} disabled={countdown > 0 || loginLoading}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: 'none', background: countdown > 0 ? '#e5e7eb' : '#10b981', color: 'white', fontSize: '13px', cursor: countdown > 0 ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+              {loginBtnText}
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'center', marginBottom: '16px' }}>
+          登录即表示同意<span style={{ color: '#10b981' }}>《用户协议》</span>
+        </div>
+        <button onClick={handleLogin} disabled={loginLoading}
+          style={{ width: '100%', padding: '12px', background: loginLoading ? '#9ca3af' : '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: '600', cursor: loginLoading ? 'not-allowed' : 'pointer' }}>
+          {loginLoading ? '登录中...' : '登录 / 注册'}
+        </button>
+        <button onClick={onClose}
+          style={{ width: '100%', marginTop: '10px', padding: '10px', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
+          关闭
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ========== 我的页面 ==========
+function MyPage({ selectedRegion, user, onLogout, showLoginModal, setShowLoginModal }) {
+  const [health, setHealth] = useState(null)
+  const [showRemindModal, setShowRemindModal] = useState(false)
+  const [regions, setRegions] = useState(['北京', '上海', '广东', '江苏', '浙江'])
+  const [historyData, setHistoryData] = useState(null) // 历史油价数据
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
+  // 提醒配置（自动判断阈值，无需用户设定）
+  const [remindConfig, setRemindConfig] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('oil_remind_config') || 'null') } catch { return null }
+  })
+  const [configForm, setConfigForm] = useState({ province: '北京', oilType: '92' })
 
   useEffect(() => {
     fetch(`${API_BASE}/health`).then(r => r.json()).then(setHealth).catch(() => {})
@@ -1432,115 +1462,26 @@ function MyPage({ selectedRegion }) {
       {/* 车辆管理 */}
       <VehicleManager />
 
-      {/* 用户信息 / 登录入口 */}
-      {user ? (
-        <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', color: 'white', fontWeight: 'bold' }}>
-              {user.phone.slice(-4)}
-            </div>
-            <div>
-              <div style={{ fontSize: '15px', fontWeight: '600', color: '#374151' }}>{user.phone.slice(0, 3)}****{user.phone.slice(-4)}</div>
-              <div style={{ fontSize: '12px', color: '#10b981' }}>已登录</div>
-            </div>
+      {/* 用户信息 */}
+      <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', color: 'white', fontWeight: 'bold' }}>
+            {user.phone.slice(-4)}
           </div>
-          <button onClick={handleLogout} style={{ padding: '6px 14px', background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
-            退出
-          </button>
-        </div>
-      ) : (
-        <div style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', borderRadius: '16px', padding: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} onClick={() => setShowLoginModal(true)}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>👤</div>
-            <div>
-              <div style={{ fontSize: '15px', fontWeight: '600', color: '#374151' }}>登录 / 注册</div>
-              <div style={{ fontSize: '12px', color: '#6b7280' }}>登录后同步数据</div>
-            </div>
+          <div>
+            <div style={{ fontSize: '15px', fontWeight: '600', color: '#374151' }}>{user.phone.slice(0, 3)}****{user.phone.slice(-4)}</div>
+            <div style={{ fontSize: '12px', color: '#10b981' }}>已登录</div>
           </div>
-          <span style={{ color: '#d1d5db', fontSize: '18px' }}>›</span>
         </div>
-      )}
+        <button onClick={onLogout} style={{ padding: '6px 14px', background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
+          退出
+        </button>
+      </div>
 
       {/* 功能菜单 */}
       <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
         <MenuItem icon="🔔" label="油价提醒" value={remindConfig ? `${remindConfig.province} ${OIL_TYPES.find(t => t.key === remindConfig.oilType)?.label}` : '未设置'} onClick={openRemindModal} />
       </div>
-
-      {/* 登录弹窗 */}
-      {showLoginModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', zIndex: 1001,
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }} onClick={() => setShowLoginModal(false)}>
-          <div style={{
-            background: 'white', borderRadius: '16px', width: '90%', maxWidth: '360px',
-            maxHeight: '80vh', overflow: 'auto', padding: '24px'
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '20px', textAlign: 'center' }}>
-              登录油价守护者
-            </div>
-
-            {loginError && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px', marginBottom: '12px', fontSize: '13px', color: '#dc2626', textAlign: 'center' }}>
-                {loginError}
-              </div>
-            )}
-
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>手机号</label>
-              <input
-                type="tel"
-                maxLength={11}
-                value={loginForm.phone}
-                onChange={e => setLoginForm({...loginForm, phone: e.target.value.replace(/\D/g, '')})}
-                placeholder="请输入手机号"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '13px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>验证码</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={loginForm.code}
-                  onChange={e => setLoginForm({...loginForm, code: e.target.value.replace(/\D/g, '')})}
-                  placeholder="6位验证码"
-                  style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px' }}
-                />
-                <button
-                  onClick={sendCode}
-                  disabled={countdown > 0 || loginLoading}
-                  style={{
-                    padding: '8px 12px', borderRadius: '8px', border: 'none',
-                    background: countdown > 0 ? '#e5e7eb' : '#10b981', color: 'white',
-                    fontSize: '13px', cursor: countdown > 0 ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
-                  }}>
-                  {loginBtnText}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'center', marginBottom: '16px' }}>
-              登录即表示同意<span style={{ color: '#10b981' }}>《用户协议》</span>
-            </div>
-
-            <button
-              onClick={handleLogin}
-              disabled={loginLoading}
-              style={{ width: '100%', padding: '12px', background: loginLoading ? '#9ca3af' : '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: '600', cursor: loginLoading ? 'not-allowed' : 'pointer' }}>
-              {loginLoading ? '登录中...' : '登录 / 注册'}
-            </button>
-
-            <button onClick={() => { setShowLoginModal(false); setLoginError('') }}
-              style={{ width: '100%', marginTop: '10px', padding: '10px', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' }}>
-              关闭
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* 油价提醒弹窗（系统自动判断阈值） */}
       {showRemindModal && (
@@ -1758,10 +1699,41 @@ export default function App({ onGotoTrip, onGotoRankings }) {
   const TABS = [
     { id: 'price', name: '油价', icon: '⛽' },
     { id: 'trend', name: '趋势', icon: '📈' },
-    { id: 'fuel', name: '油耗', icon: '📊' },
-    { id: 'stations', name: '附近', icon: '🔍' },
-    { id: 'my', name: '我的', icon: '👤' },
+    { id: 'fuel', name: '油耗', icon: '📊', requiresAuth: true },
+    { id: 'stations', name: '附近', icon: '🔍', requiresAuth: true },
+    { id: 'my', name: '我的', icon: '👤', requiresAuth: true },
   ]
+
+  // 登录状态（提升到 App 层，供所有页面共享）
+  const [user, setUser] = useState(() => {
+    const token = localStorage.getItem('oil_token')
+    const phone = localStorage.getItem('oil_user_phone')
+    return token && phone ? { token, phone } : null
+  })
+  const [showLoginModal, setShowLoginModal] = useState(false)
+  const [pendingTab, setPendingTab] = useState(null) // 登录成功后要跳转的 tab
+
+  const handleLogout = useCallback(() => {
+    const token = localStorage.getItem('oil_token')
+    if (token) {
+      fetch(`${API_BASE}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {})
+    }
+    localStorage.removeItem('oil_token')
+    localStorage.removeItem('oil_user_phone')
+    localStorage.removeItem('oil_remind_config')
+    setUser(null)
+  }, [])
+
+  // Tab 切换时检查登录
+  const handleTabChange = useCallback((tabId) => {
+    const tab = TABS.find(t => t.id === tabId)
+    if (tab?.requiresAuth && !user) {
+      setPendingTab(tabId)
+      setShowLoginModal(true)
+      return
+    }
+    setTab(tabId)
+  }, [user])
 
   return (
     <div style={{ maxWidth: '480px', margin: '0 auto', minHeight: '100vh', background: 'var(--bg-primary)', fontFamily: 'system-ui, -apple-system, sans-serif', color: 'var(--text-primary)', transition: 'background 0.2s, color 0.2s' }} className={darkMode ? 'dark' : ''}>
@@ -1923,15 +1895,9 @@ export default function App({ onGotoTrip, onGotoRankings }) {
         {tab === 'trend' && (
           <TrendPage selectedRegion={selectedRegion} setSelectedRegion={setSelectedRegion} regions={regions} />
         )}
-        {tab === 'fuel' && <FuelPage />}
-        {tab === 'stations' && (
-          <StationsPage
-            selectedRegion={selectedRegion}
-            setSelectedRegion={setSelectedRegion}
-            regions={regions}
-          />
-        )}
-        {tab === 'my' && <MyPage selectedRegion={selectedRegion} />}
+        {tab === 'fuel' && (user ? <FuelPage /> : null)}
+        {tab === 'stations' && (user ? <StationsPage selectedRegion={selectedRegion} setSelectedRegion={setSelectedRegion} regions={regions} /> : null)}
+        {tab === 'my' && (user ? <MyPage selectedRegion={selectedRegion} user={user} onLogout={handleLogout} showLoginModal={showLoginModal} setShowLoginModal={setShowLoginModal} /> : null)}
       </div>
 
       {/* 定位省份联动 Toast */}
@@ -1970,7 +1936,7 @@ export default function App({ onGotoTrip, onGotoRankings }) {
         {TABS.map(t => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => handleTabChange(t.id)}
             style={{
               flex: 1, padding: '8px 0',
               background: 'none', border: 'none',
@@ -1984,6 +1950,13 @@ export default function App({ onGotoTrip, onGotoRankings }) {
           </button>
         ))}
       </div>
+
+      {/* 全局登录弹窗 */}
+      <LoginModal
+        visible={showLoginModal}
+        onClose={() => { setShowLoginModal(false); setPendingTab(null) }}
+        onLoginSuccess={(u) => { setUser(u); setShowLoginModal(false); setTab(pendingTab || 'fuel'); setPendingTab(null) }}
+      />
     </div>
   )
 }
