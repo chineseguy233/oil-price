@@ -23,9 +23,6 @@ const USERS_FILE = path.join(__dirname, '../data/users.json');
 // 验证码存储 (内存中，5分钟过期)
 const verificationCodes = new Map();
 
-// 腾讯云 SMS
-const { sendVerificationCode, isConfigured: isSmsConfigured } = require('./sms/tencent_sms.cjs');
-
 // 确保users文件存在
 function getUsers() {
     try {
@@ -86,7 +83,7 @@ function authMiddleware(req, res, next) {
 // ============ 用户API ============
 
 // 发送验证码
-app.post('/api/auth/code', async (req, res) => {
+app.post('/api/auth/code', (req, res) => {
     const { phone } = req.body;
     if (!phone || !/^1\d{10}$/.test(phone)) {
         return res.json({ success: false, error: '手机号格式错误' });
@@ -96,34 +93,7 @@ app.post('/api/auth/code', async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expireMinutes = 5;
 
-    // 检查 SMS 是否已配置
-    if (!isSmsConfigured()) {
-        // 降级：未配置 SMS 时打印到日志（开发调试用）
-        console.warn(`[验证码] ${phone}: ${code} （SMS 未配置，请设置环境变量）`);
-        console.log(`[开发模式] 验证码：${code}`);
-
-        verificationCodes.set(phone, {
-            code,
-            expiresAt: Date.now() + expireMinutes * 60 * 1000,
-        });
-
-        setTimeout(() => {
-            verificationCodes.delete(phone);
-            console.log(`[验证码] ${phone} 已过期`);
-        }, expireMinutes * 60 * 1000);
-
-        return res.json({
-            success: true,
-            message: '验证码已发送（开发模式：见服务端日志）',
-            devMode: true,
-        });
-    }
-
-    // 发送腾讯云 SMS
-    const smsResult = await sendVerificationCode(phone, code, expireMinutes);
-    if (!smsResult.success) {
-        return res.status(400).json({ success: false, error: smsResult.message });
-    }
+    console.log(`[验证码] ${phone}: ${code}`);
 
     // 存储验证码，5分钟过期
     verificationCodes.set(phone, {
@@ -137,7 +107,11 @@ app.post('/api/auth/code', async (req, res) => {
         console.log(`[验证码] ${phone} 已过期`);
     }, expireMinutes * 60 * 1000);
 
-    res.json({ success: true, message: '验证码已发送' });
+    res.json({
+        success: true,
+        message: '验证码已发送',
+        devMode: false,
+    });
 });
 
 // 登录/注册

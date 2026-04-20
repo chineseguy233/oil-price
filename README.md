@@ -20,7 +20,6 @@ npm run dev                   # 启动前端开发服务器 → http://localhost
 - **后端**: Express.js
 - **爬虫**: Python 3 + requests + BeautifulSoup
 - **地图/定位**: 高德地图 Web API
-- **SMS**: 腾讯云 SMS SDK（tencentcloud-sdk-nodejs）
 - **数据源**: 汽车之家（autohome.com.cn/oil）
 
 ---
@@ -42,8 +41,6 @@ oil-price-app/
 │   ├── api.cjs                # API 入口（含所有路由）
 │   ├── routes/
 │   │   └── route.cjs          # 路线油费计算路由（含节假日判断）
-│   └── sms/
-│       └── tencent_sms.cjs    # 腾讯云 SMS 模块
 │
 ├── src/                        # React 前端（H5 + 小程序）
 │   ├── App.jsx                # 主应用（省份选择、Tab 路由）
@@ -130,10 +127,9 @@ GET /api/route/oil-cost → TripPage（途经省份油价）
 ### 用户登录
 
 ```
-前端手机号 → POST /api/auth/code
-    ↓ 腾讯云 SMS 发送（isConfigured()=true 时）
+前端手机号 → POST /api/auth/code（验证码输出到服务端日志）
 手机收到验证码 → POST /api/auth/login
-    ↓ 返回 JWT token
+    ↓ 返回 token
 前端存入 localStorage，后续请求 Header 携带
 ```
 

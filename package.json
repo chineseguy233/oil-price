@@ -26,15 +26,21 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",
-    "sqlite3": "^6.0.1",
-    "tencentcloud-sdk-nodejs": "^4.1.217"
+    "sqlite3": "^6.0.1"
   },
   "devDependencies": {
-    "@tarojs/cli": "^3.6.40",
+    "@babel/preset-env": "^7.29.2",
+    "@babel/preset-react": "^7.28.5",
+    "@tarojs/cli": "^4.2.0",
+    "@tarojs/plugin-framework-react": "^4.2.0",
+    "@tarojs/service": "^4.2.0",
+    "@tarojs/webpack5-runner": "^4.2.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.3.6",
-    "vite": "^5.0.8"
+    "vite": "^5.0.8",
+    "webpack": "^5.91.0",
+    "webpack-cli": "^7.0.2"
   }
 }

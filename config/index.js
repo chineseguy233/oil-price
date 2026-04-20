@@ -1,4 +1,6 @@
-const config = {
+const path = require('path')
+
+module.exports = {
   projectName: 'oil-price-app',
   date: '2026-04-19',
   designWidth: 375,
@@ -23,9 +25,7 @@ const config = {
   cacheDirectory: 'node_modules/.taro-cache',
   mini: {
     compile: {
-      exclude: [
-        // 排除不需要编译的模块
-      ],
+      exclude: [],
     },
     postcss: {
       pxtransform: {
@@ -50,12 +50,10 @@ const config = {
       chain.merge({
         resolve: {
           alias: {
-            '@': path.resolve(__dirname, 'src'),
+            '@': path.resolve(__dirname, '../src'),
           },
         },
       })
     },
   },
 }
-
-module.exports = config
