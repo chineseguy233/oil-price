@@ -227,7 +227,7 @@ function ResultCard({ result }) {
 
   const {
     total_km, provinces_crossed, province_prices, province_distances,
-    oil_cost, toll_cost, is_free_toll, holiday, free_toll_saving,
+    oil_cost, toll_cost, is_free_toll, holiday, free_toll_saving, unknown,
     from, to, total_cost, oil_type, fuel_consumption, total_duration_min,
     weighted_price, vehicle_type,
   } = result
@@ -347,7 +347,7 @@ function ResultCard({ result }) {
         </div>
 
         {/* 高速费 */}
-        {!is_free_toll && (
+        {!is_free_toll && !unknown && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '18px' }}>🛣️</span>
@@ -366,7 +366,7 @@ function ResultCard({ result }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '15px', color: '#374151', fontWeight: '600' }}>合计</span>
           <span style={{ fontSize: '26px', fontWeight: 'bold', color: '#1f2937' }}>
-            ¥{total_cost}
+            ¥{total_cost}{unknown ? '+' : ''}
           </span>
         </div>
       </div>
@@ -393,6 +393,22 @@ function ResultCard({ result }) {
               节省 ¥{free_toll_saving} 高速费
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 节假日未知时提示 */}
+      {unknown && (
+        <div style={{
+          background: '#fef3c7',
+          border: '1px solid #f59e0b',
+          borderRadius: '16px',
+          padding: '14px 16px',
+          marginBottom: '12px',
+          color: '#92400e',
+          fontSize: '13px',
+          lineHeight: '1.5',
+        }}>
+          ⚠️ 节假日数据暂未收录，高速费按正常费率计算。如该日期为节假日，免费政策以交通运输部规定为准。
         </div>
       )}
 
@@ -518,7 +534,12 @@ export default function TripPage() {
     const v = getSelectedVehicle()
     return v ? String(v.fuelConsumption) : '7.5'
   })
-  const [travelDate, setTravelDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [travelDate, setTravelDate] = useState(() => {
+    // 用本地时间，避免 UTC 偏移导致日期差一天
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().split('T')[0];
+  })
   const [vehicleMode, setVehicleMode] = useState(() => !!getSelectedVehicle())
   const [selectedVehicle, setSelectedVehicleState] = useState(getSelectedVehicle)
   const [vehicleType, setVehicleType] = useState('small')

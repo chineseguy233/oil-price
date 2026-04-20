@@ -239,12 +239,13 @@ export default function RankingsPage() {
   const [selectedProvince, setSelectedProvince] = useState(null) // 弹窗
   const [showAll, setShowAll] = useState(false) // F2: 展开全部省份
 
-  // F2 SEO
+  // F2 SEO: 油号切换时同步更新 title/description
   useEffect(() => {
-    document.title = '中国各省油价排行榜_92号汽油哪里最便宜'
+    const oilLabel = oilType === '0' ? '0号柴油' : `${oilType}号汽油`
+    document.title = `中国各省${oilLabel}排行榜_${oilLabel}哪里最便宜`
     const metaDesc = document.querySelector('meta[name="description"]')
     if (metaDesc) {
-      metaDesc.setAttribute('content', '查看全国31省92号、95号、98号汽油价格排行，了解各省油价差异原因，海南为何最贵？新疆为何最便宜？')
+      metaDesc.setAttribute('content', `查看全国31省${oilLabel}价格排行，了解各省油价差异原因，海南为何最贵？新疆为何最便宜？`)
     }
     return () => {
       document.title = '油价守护者 - 智能油价监测'
@@ -253,7 +254,7 @@ export default function RankingsPage() {
         metaDesc.setAttribute('content', '实时查看各省92#、95#、98#汽油及0#柴油价格，对比历史走势，找附近加油站')
       }
     }
-  }, [])
+  }, [oilType])
 
   const load = useCallback(() => {
     setLoading(true)

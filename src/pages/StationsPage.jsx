@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { autoLocate, amapSearchNearby } from '../utils/geolocation'
 
 const API_BASE = '/api'
@@ -370,50 +370,10 @@ function StationCard({ station, sortKey, provincePrice }) {
   )
 }
 
-// ========== 省份选择器（带搜索）============
-function ProvinceSelector({ value, onChange, provinces }) {
-  const [search, setSearch] = useState('')
-  const [open, setOpen] = useState(false)
 
-  const filtered = search
-    ? provinces.filter(p => p.includes(search) || p.pinyin?.toLowerCase().includes(search.toLowerCase()))
-    : provinces
-
-  // 最近访问
-  const recent = JSON.parse(localStorage.getItem('recent_provinces') || '[]')
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <select
-        value={value}
-        onChange={e => {
-          onChange(e.target.value)
-          // 记录最近
-          const recent = JSON.parse(localStorage.getItem('recent_provinces') || '[]')
-          const updated = [e.target.value, ...recent.filter(r => r !== e.target.value)].slice(0, 3)
-          localStorage.setItem('recent_provinces', JSON.stringify(updated))
-        }}
-        style={{
-          width: '100%',
-          padding: '10px 12px',
-          borderRadius: '10px',
-          border: '1px solid #e5e7eb',
-          fontSize: '14px',
-          background: '#f9fafb',
-          cursor: 'pointer',
-          color: '#374151',
-        }}
-      >
-        {provinces.map(p => (
-          <option key={p} value={p}>{p}</option>
-        ))}
-      </select>
-    </div>
-  )
-}
 
 // ========== 加油站比价页面 ==========
-export default function StationsPage({ selectedRegion, setSelectedRegion, regions } = {}) {
+export default function StationsPage({ selectedRegion, setSelectedRegion, regions, oilData } = {}) {
   const [stations, setStations] = useState([])
   const [loading, setLoading] = useState(false)
   const [sortKey, setSortKey] = useState('distance')
@@ -427,8 +387,12 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
   const [total, setTotal] = useState(0)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  // 获取当前省份油价（作为参考价）
-  const provincePrice = null // 后续通过props或context传入更准确
+  // 获取当前省份油价（作为参考价，有真实数据时显示参考价）
+  const provincePrice = useMemo(() => {
+    if (!oilData || !selectedRegion) return null
+    const data = oilData[selectedRegion]
+    return data?.['92'] ?? null
+  }, [oilData, selectedRegion])
 
   // 加载省份加油站（模拟数据）
   const loadProvinceStations = useCallback(() => {
@@ -458,6 +422,13 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
       setLocMessage(loc.message || (loc.source === 'gps' ? 'GPS定位成功' : '网络定位成功'))
 
       const result = await amapSearchNearby(loc.lat, loc.lng, radius, pageNum)
+      // 定位成功后：自动设置省份（联动油价Tab）
+      if (loc.province && setSelectedRegion) {
+        // 仅在定位省份在列表中时才切换
+        if (regions && regions.includes(loc.province)) {
+          setSelectedRegion(loc.province)
+        }
+      }
       if (pageNum === 1) {
         setStations(result.stations)
       } else {
@@ -646,11 +617,29 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
           boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
         }}>
           <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px', fontWeight: '500' }}>选择省份</div>
-          <ProvinceSelector
+          <select
             value={selectedRegion}
-            onChange={setSelectedRegion}
-            provinces={regions}
-          />
+            onChange={e => {
+              setSelectedRegion(e.target.value)
+              const recent = JSON.parse(localStorage.getItem('recent_provinces') || '[]')
+              const updated = [e.target.value, ...recent.filter(r => r !== e.target.value)].slice(0, 3)
+              localStorage.setItem('recent_provinces', JSON.stringify(updated))
+            }}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: '10px',
+              border: '1px solid #e5e7eb',
+              fontSize: '14px',
+              background: '#f9fafb',
+              cursor: 'pointer',
+              color: '#374151',
+            }}
+          >
+            {(regions || []).map(p => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
         </div>
       )}
 
@@ -765,7 +754,7 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
               key={`${station.name}-${station.location || idx}`}
               station={station}
               sortKey={sortKey}
-              provincePrice={null}
+              provincePrice={provincePrice}
             />
           ))}
 

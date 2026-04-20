@@ -20,17 +20,28 @@ const OIL_PRICES_FILE = path.join(__dirname, '../../data/oil_prices.json');
 //   免费时段：节日第一天 00:00 至最后一天 24:00（以出站时间为准）
 //
 
-// 2026 年法定节假日精确区间（含首尾+调休日）
-// 结构：{ name, start:'MMDD', end:'MMDD' }  start<=date<=end → 该节假日免费
-const LEGAL_HOLIDAYS_2026 = [
-  { name: '元旦',   start: '0101', end: '0108' },  // 元旦: 1月1-3日 + 周末调休 = 1-8日
-  { name: '春节',   start: '0127', end: '0223' },  // 春节: 1月28-2月3日 + 2月16-23日调休
-  { name: '清明节', start: '0401', end: '0407' },  // 清明: 4月4-6日 + 4月5日周日调休 = 1-7日
-  { name: '劳动节', start: '0501', end: '0508' },  // 劳动节: 5月1-5日 + 5月2-3日周末调休 = 1-8日
-  { name: '端午节', start: '0531', end: '0607' },  // 端午: 5月31-6月2日 + 6月21日周日调休
-  { name: '中秋节', start: '0925', end: '0930' },  // 中秋: 9月25-27日 + 9月28-30日调休
-  { name: '国庆节', start: '1001', end: '1011' },  // 国庆: 10月1-7日 + 10月10-11日周末调休
-];
+// 法定节假日区间（含调休日），按年份索引
+// 结构：{ name, start:'MMDD', end:'MMDD' }  start<=date<=end → 该节假日区间
+const LEGAL_HOLIDAYS = {
+  2026: [
+    { name: '元旦',   start: '0101', end: '0103' },  // 1月1-3日
+    { name: '春节',   start: '0128', end: '0203' },  // 1月28-2月3日（2月16-23为调休上班）
+    { name: '清明节', start: '0403', end: '0406' },  // 4月3-6日
+    { name: '劳动节', start: '0501', end: '0505' },  // 5月1-5日
+    { name: '端午节', start: '0628', end: '0630' },  // 6月28-30日
+    { name: '中秋节', start: '0930', end: '1001' },  // 9月30-10月1日（连国庆）
+    { name: '国庆节', start: '1001', end: '1007' },  // 10月1-7日
+  ],
+  2027: [
+    { name: '元旦',   start: '0101', end: '0103' },
+    { name: '春节',   start: '0216', end: '0222' },
+    { name: '清明节', start: '0405', end: '0407' },
+    { name: '劳动节', start: '0501', end: '0503' },
+    { name: '端午节', start: '0618', end: '0620' },
+    { name: '中秋节', start: '0925', end: '0927' },
+    { name: '国庆节', start: '1001', end: '1007' },
+  ],
+};
 
 // 小客车（7座及以下）在这些节日免高速费
 const FREE_FOR_SMALL_CAR = new Set(['春节', '劳动节', '国庆节']);
@@ -59,37 +70,43 @@ function toMMDD(dateStr) {
 }
 
 // 判断某日期是否在法定节假日区间（含调休日）
-// 先用 API 数据增强（API 成功时），API 失败则直接查 hardcoded 表
-function isHolidayByDate(dateStr, calendarList) {
+// 先用 API 数据增强（API 成功时），API 失败则直接查 year-specific hardcoded 表
+function isHolidayByDate(dateStr, calendarList, year) {
   const mmdd = toMMDD(dateStr);
 
-  // 查找所在的节假日区间
-  for (const h of LEGAL_HOLIDAYS_2026) {
-    if (mmdd >= h.start && mmdd <= h.end) {
-      return { free: true, holiday: h.name };
+  // 查找所在的节假日区间（优先用 year-specific 硬编码表）
+  const holidays = LEGAL_HOLIDAYS[year];
+  if (holidays) {
+    for (const h of holidays) {
+      if (mmdd >= h.start && mmdd <= h.end) {
+        // API 增强：检查该天是否被调休（周末变工作日）→ 收费
+        if (calendarList) {
+          const targetDate = parseInt(dateStr.replace('-', ''));
+          for (const day of calendarList) {
+            if (day.date === targetDate && day.holiday_legal === 1) {
+              return { free: false, holiday: null }; // 调休周末，不免费
+            }
+          }
+        }
+        return { free: true, holiday: h.name };
+      }
     }
   }
 
-  // API 增强：检查是否有调休（周末变工作日）使该天成为高速收费日
-  // holiday_legal=1 表示需要上班的调休周末，该天不免费
-  if (calendarList) {
-    const targetDate = parseInt(dateStr.replace('-', ''));
-    for (const day of calendarList) {
-      if (day.date === targetDate) {
-        // holiday_legal=1: 调休周末（要上班）→ 收费
-        if (day.holiday_legal === 1) return { free: false, holiday: null };
-        // holiday_legal=2 且不在上面 hardcoded 区间 → 可能是元旦小长假等补充
-        // 此时返回 free=false（因为上面已经覆盖了所有区间）
-      }
-    }
+  // 如果当年没有硬编码数据，且 API 失败，返回 unknown（不猜）
+  if (!calendarList) {
+    return { free: null, holiday: null, unknown: true };
   }
 
   return { free: false, holiday: null };
 }
 
 // 判断小客车是否在免费节日
-function isFreeTollDay(dateStr, vehicleType, calendarList) {
-  const info = isHolidayByDate(dateStr, calendarList);
+function isFreeTollDay(dateStr, vehicleType, calendarList, year) {
+  const info = isHolidayByDate(dateStr, calendarList, year);
+  if (info.free === null && info.unknown) {
+    return { free: null, holiday: null, unknown: true }; // 查不到，不猜
+  }
   if (!info.free) return { free: false, holiday: null };
 
   if (vehicleType === 'big') {
@@ -110,9 +127,9 @@ async function getHolidayCache(year) {
 
 // 公开的免费判断接口（供 calculateRouteOilCost 使用）
 async function checkFreeToll({ dateStr, vehicleType }) {
-  const year = dateStr ? dateStr.slice(0, 4) : String(new Date().getFullYear());
+  const year = dateStr ? parseInt(dateStr.slice(0, 4)) : new Date().getFullYear();
   const cache = await getHolidayCache(year);
-  return isFreeTollDay(dateStr, vehicleType, cache.list);
+  return isFreeTollDay(dateStr, vehicleType, cache.list, year);
 }
 
 // ============ 油价数据 ============
@@ -375,6 +392,7 @@ async function calculateRouteOilCost({
     is_free_toll,
     holiday: holidayInfo.holiday,
     free_toll_saving: parseFloat(free_toll_saving.toFixed(2)),
+    unknown: holidayInfo.unknown || false,
     total_cost: parseFloat(total_cost.toFixed(2)),
     oil_type,
     fuel_consumption,
@@ -397,6 +415,18 @@ router.get('/route/oil-cost', async (req, res) => {
     return res.status(400).json({ success: false, error: '缺少必填参数：from, to' });
   }
 
+  // 日期格式校验：YYYY-MM-DD
+  if (travel_date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(travel_date)) {
+      return res.status(400).json({ success: false, error: '日期格式错误，请使用 YYYY-MM-DD' });
+    }
+    const [y, m, d] = travel_date.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+      return res.status(400).json({ success: false, error: '日期不存在（如2月30日），请检查' });
+    }
+  }
+
   const oilType = ['92', '95', '98', '0'].includes(oil_type) ? oil_type : '92';
   const fuelConsumption = parseFloat(fuel_consumption) || 7.5;
   const vehicleType = ['small', 'big'].includes(vehicle_type) ? vehicle_type : 'small';
@@ -406,7 +436,11 @@ router.get('/route/oil-cost', async (req, res) => {
       from, to,
       oil_type: oilType,
       fuel_consumption: fuelConsumption,
-      travel_date: travel_date || new Date().toISOString().split('T')[0],
+      travel_date: travel_date || (() => {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        return now.toISOString().split('T')[0];
+      })(),
       vehicle_type: vehicleType,
     });
     res.json({ success: true, ...result });
