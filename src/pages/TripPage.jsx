@@ -7,14 +7,19 @@ import TabBar from '../components/TabBar'
 const API_BASE = '/api'
 
 const FUEL_CONSUMPTION_OPTIONS = [
-  { key: '6', label: '6L', desc: '小型车' },
-  { key: '7.5', label: '7.5L', desc: '经济型' },
+  { key: '6', label: '6L', desc: '经济型' },
+  { key: '7.5', label: '7.5L', desc: '家用轿车' },
   { key: '10', label: '10L', desc: 'SUV' },
-  { key: '12', label: '12L', desc: '大型SUV/皮卡' },
+  { key: '12', label: '12L', desc: '大型SUV' },
+]
+
+const VEHICLE_TYPE_OPTIONS = [
+  { key: 'small', label: '🚗 小客车', desc: '7座及以下', sub: '春节/劳动节/国庆免费' },
+  { key: 'big', label: '🚌 大客车', desc: '8座及以上', sub: '仅春节免费' },
 ]
 
 // ========== 输入卡片 ==========
-function InputCard({ from, setFrom, to, setTo, fuelConsumption, setFuelConsumption, onCalculate, loading, vehicleMode, setVehicleMode, selectedVehicle, setSelectedVehicleState, travelDate, setTravelDate }) {
+function InputCard({ from, setFrom, to, setTo, fuelConsumption, setFuelConsumption, onCalculate, loading, vehicleMode, setVehicleMode, selectedVehicle, setSelectedVehicleState, travelDate, setTravelDate, vehicleType, setVehicleType }) {
   const handleVehicleChange = (v) => {
     setSelectedVehicleState(v)
     setSelectedVehicleId(v.id)
@@ -128,6 +133,38 @@ function InputCard({ from, setFrom, to, setTo, fuelConsumption, setFuelConsumpti
         )}
       </div>
 
+      {/* 车型（座位数，影响高速费免费规则） */}
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '8px', fontWeight: '500' }}>车型</div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {VEHICLE_TYPE_OPTIONS.map(opt => (
+            <button
+              key={opt.key}
+              onClick={() => setVehicleType(opt.key)}
+              style={{
+                flex: 1,
+                padding: '10px 6px',
+                borderRadius: '12px',
+                border: vehicleType === opt.key ? 'none' : '1.5px solid #e5e7eb',
+                background: vehicleType === opt.key
+                  ? 'linear-gradient(135deg, #3b82f6, #60a5fa)'
+                  : '#f9fafb',
+                color: vehicleType === opt.key ? 'white' : '#6b7280',
+                fontWeight: vehicleType === opt.key ? 'bold' : '500',
+                fontSize: '13px',
+                cursor: 'pointer',
+                boxShadow: vehicleType === opt.key ? '0 4px 12px #3b82f644' : 'none',
+                transition: 'all 0.2s',
+              }}
+            >
+              <div style={{ fontSize: '16px', marginBottom: '2px' }}>{opt.key === 'small' ? '🚗' : '🚌'}</div>
+              <div>{opt.desc}</div>
+              <div style={{ fontSize: '10px', opacity: 0.75, marginTop: '2px' }}>{opt.sub}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* 出行日期 */}
       <div style={{ marginBottom: '16px' }}>
         <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', fontWeight: '500' }}>出行日期（高速免费判断用）</div>
@@ -189,9 +226,10 @@ function ResultCard({ result }) {
   if (!result) return null
 
   const {
-    total_km, provinces_crossed, province_prices,
+    total_km, provinces_crossed, province_prices, province_distances,
     oil_cost, toll_cost, is_free_toll, holiday, free_toll_saving,
     from, to, total_cost, oil_type, fuel_consumption, total_duration_min,
+    weighted_price, vehicle_type,
   } = result
 
   const oilColor = { '92': '#3b82f6', '95': '#8b5cf6', '98': '#f59e0b', '0': '#10b981' }[oil_type] || '#3b82f6'
@@ -211,8 +249,9 @@ function ResultCard({ result }) {
           <div style={{ fontSize: '14px', color: '#6b7280' }}>
             全程约 <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#1f2937' }}>{total_km}</span> 公里
           </div>
-          <div style={{ fontSize: '12px', color: '#9ca3af' }}>
-            约 {total_duration_min} 分钟
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#9ca3af' }}>{vehicle_type === 'big' ? '🚌 大客车' : '🚗 小客车'}</span>
+            <span style={{ fontSize: '12px', color: '#9ca3af' }}>约 {total_duration_min} 分钟</span>
           </div>
         </div>
 
@@ -250,10 +289,18 @@ function ResultCard({ result }) {
           marginBottom: '12px',
           boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
         }}>
-          <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '10px', fontWeight: '500' }}>途经省份油价（{oil_type}#）</div>
+          <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '10px', fontWeight: '500' }}>
+            途经省份油价（{oil_type}#）
+            {weighted_price && (
+              <span style={{ fontWeight: 'normal', color: '#2563eb', marginLeft: '8px', fontSize: '11px' }}>
+                加权均价 ¥{weighted_price}
+              </span>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
             {validProvinces.map((p, i) => {
               const price = province_prices[p]
+              const dist = province_distances?.[p]
               const isMin = price === Math.min(...validProvinces.map(x => province_prices[x]))
               return (
                 <div key={p} style={{
@@ -261,15 +308,16 @@ function ResultCard({ result }) {
                   background: isMin ? '#f0fdf4' : '#f9fafb',
                   border: isMin ? '1.5px solid #86efac' : '1.5px solid #e5e7eb',
                   borderRadius: '12px',
-                  padding: '10px 14px',
+                  padding: '8px 12px',
                   textAlign: 'center',
                   minWidth: '72px',
                 }}>
-                  <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '4px' }}>{p}</div>
-                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: isMin ? '#16a34a' : oilColor }}>
+                  <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>{p}</div>
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', color: isMin ? '#16a34a' : oilColor }}>
                     ¥{price}
                   </div>
-                  {isMin && <div style={{ fontSize: '9px', color: '#22c55e', marginTop: '2px' }}>最低</div>}
+                  {dist && <div style={{ fontSize: '9px', color: '#9ca3af', marginTop: '1px' }}>{dist}km</div>}
+                  {isMin && <div style={{ fontSize: '9px', color: '#22c55e', marginTop: '1px' }}>最低</div>}
                 </div>
               )
             })}
@@ -473,6 +521,7 @@ export default function TripPage() {
   const [travelDate, setTravelDate] = useState(() => new Date().toISOString().split('T')[0])
   const [vehicleMode, setVehicleMode] = useState(() => !!getSelectedVehicle())
   const [selectedVehicle, setSelectedVehicleState] = useState(getSelectedVehicle)
+  const [vehicleType, setVehicleType] = useState('small')
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -484,7 +533,7 @@ export default function TripPage() {
     setResult(null)
     try {
       const res = await fetch(
-        `${API_BASE}/route/oil-cost?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&fuel_consumption=${fuelConsumption}&travel_date=${travelDate}`
+        `${API_BASE}/route/oil-cost?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&fuel_consumption=${fuelConsumption}&travel_date=${travelDate}&vehicle_type=${vehicleType}`
       )
       const data = await res.json()
       if (data.success) {
@@ -499,7 +548,7 @@ export default function TripPage() {
     } finally {
       setLoading(false)
     }
-  }, [from, to, fuelConsumption, travelDate, setSearchParams])
+  }, [from, to, fuelConsumption, travelDate, vehicleType, setSearchParams])
 
   // 从 URL 参数进来时自动计算
   useEffect(() => {
@@ -567,6 +616,7 @@ export default function TripPage() {
         selectedVehicle={selectedVehicle}
         setSelectedVehicleState={setSelectedVehicleState}
         travelDate={travelDate} setTravelDate={setTravelDate}
+        vehicleType={vehicleType} setVehicleType={setVehicleType}
       />
 
       {/* 错误提示 */}
