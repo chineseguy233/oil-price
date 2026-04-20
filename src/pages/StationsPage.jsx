@@ -32,6 +32,19 @@ function navigateTo(location, name) {
 }
 
 // ========== 真实高德地图 ==========
+//
+// 地图初始化关键设计：containerRef 稳定容器模式
+//
+// React 条件渲染的坑：如果用 `mapReady ? <div ref={mapRef}> : <Placeholder>`，
+// 第一次渲染时 mapRef.current 指向 Placeholder DOM 节点；
+// mapReady=true 后 mapRef 指向另一个（新的）DOM 节点，但 AMap 已经初始化在旧的节点上。
+// 结果：真正的地图容器是空的，白屏。
+//
+// 解决方案：始终在 DOM 中保留一个固定容器（containerRef），
+// AMap 初始化在这个稳定容器上；地图可见性用 CSS `display` 控制，不影响 DOM 存在性。
+// AMap.destroy() 在 useEffect cleanup 中执行，避免地图实例泄漏。
+//
+// 相关 issue：高德地图在 React 条件渲染下 init 后 map div 空白的经典问题。
 function RealMap({ stations, userLocation, radius, onStationClick }) {
   const containerRef = useRef(null)   // 固定容器，mount 时就存在
   const mapRef = useRef(null)         // AMap 实例持有

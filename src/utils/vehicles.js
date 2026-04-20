@@ -1,8 +1,27 @@
 /**
  * 车辆管理工具函数
- * 数据存储在 localStorage，key 如下：
- *   my_vehicles          — 车辆列表
- *   selected_vehicle_id  — 当前选中车辆ID
+ *
+ * 数据存储在 localStorage，两个 key：
+ *   my_vehicles          — 车辆列表（数组）
+ *   selected_vehicle_id  — 当前选中车辆 ID（字符串）
+ *
+ * 车辆数据结构：
+ *   { id, name, oilType, fuelConsumption, createdAt }
+ *     id              — 唯一标识，generateId() 生成
+ *     name            — 车辆名称（如"我的车"）
+ *     oilType         — 油号（'92'|'95'|'98'|'0'）
+ *     fuelConsumption — 油耗（升/百公里），小数
+ *     createdAt       — 创建时间戳
+ *
+ * 油耗记录（fuel_records）与车辆的关系：
+ *   - 记录通过 vehicleId 关联到某辆车
+ *   - 一辆车可以有多条加油记录
+ *   - recalcVehicleConsumption() 根据历史记录重新计算该车油耗，更新到 my_vehicles
+ *
+ * 选中状态：
+ *   - selected_vehicle_id 只是一个 ID，不是对象
+ *   - getSelectedVehicle() 负责把 ID → 完整车辆对象
+ *   - 删车时如果删的是当前选中，自动清除选中状态
  */
 
 const STORAGE_KEYS = {
@@ -144,7 +163,26 @@ export function updateFuelRecord(id, updates) {
 }
 
 // ========== 根据油耗记录自动更新车辆油耗 ==========
-
+//
+// recalcVehicleConsumption 的计算逻辑（与 fuel/index.tsx 的 avgConsumption 保持一致）：
+//
+//   1. 取出该车的所有加油记录，按日期升序排序
+//   2. 从 records[1] 开始遍历（跳过最新记录，理由同上）
+//      第 i 条记录：本次加油 fuel[i]，从 km[i-1] 到 km[i] 烧的油
+//   3. 总油耗 / 总里程 * 100 = 百公里油耗
+//
+//   例：records = [
+//     { date:'3/15', km:520, fuel:42 },
+//     { date:'3/10', km:480, fuel:38 },
+//   ]
+//   → 本次行驶 520-480=40km，烧了 38L
+//   → 38/40*100 = 9.5L/100km
+//
+// 特殊情况：
+//   - 只有一条记录：无法算里程区间，直接用该记录的 consumption 字段
+//   - 总里程 deltaKm=0（两条记录 km 相同）：跳过该段
+//
+// 更新策略：计算结果四舍五入到 0.1L，更新到 my_vehicles 中该车的 fuelConsumption
 export function recalcVehicleConsumption(vehicleId) {
   if (!vehicleId) return null
   const records = getFuelRecords()

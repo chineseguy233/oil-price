@@ -3,12 +3,33 @@ import { View, Text, Button, Input, Picker, Modal } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import './index.css'
 
+// ========== 数据存储 ==========
+//
+// storage key: 'oil_fuel_records'
+// 数据结构（newest-first，按日期倒序）:
+//   { date, km, fuel, pricePerL, price }
+//     date       — 加油日期 'YYYY-MM-DD'
+//     km         — 仪表盘累计读数（公里），只增不减，用于计算油耗区间
+//     fuel       — 本次加油量（升）
+//     pricePerL  — 单价（元/升），可不填，由 price/fuel 反推
+//     price      — 本次总价（元）
+//
+// 重要：km 是仪表盘读数（绝对值），不是"本次行驶里程"。
+//       例如：3月10日 km=480，3月15日 km=520 → 本次行驶 520-480=40km
+//       添加记录时，新 km 必须大于已有记录的最大 km（不管日期顺序）
+//
+// 油耗计算 avgConsumption():
+//   公式：总油量 / 总里程 * 100
+//   使用 records[1..n] 而非 records[0..n]：
+//     records[0] 是最新记录，没有"下一次里程"来算最后一段油耗区间
+//     从 records[1] 开始，每条都能找到前一条 records[i-1] 的 km 做起点
+
 const STORAGE_KEY = 'oil_fuel_records'
 
 interface FuelRecord {
   date: string
-  km: number
-  fuel: number
+  km: number   // 仪表盘累计读数（绝对值，只增不减）
+  fuel: number  // 本次加油量（升）
   pricePerL: number
   price: number
 }
@@ -46,7 +67,13 @@ export default function FuelPage() {
     setRecords(data)
   }
 
-  // 计算百公里油耗
+  // ========== 计算百公里油耗 ==========
+  //
+  // 原理：用 records[1..n] 之间的油量和里程计算。
+  //   records[1]: km=480, fuel=38  → 从 km=480 到 km=520 烧了 38L
+  //   records[0]: km=520, fuel=42  → 最新记录，尾段油耗无法计算（不知道下次加了多少）
+  //
+  // 公式：∑(records[i].fuel) / ∑(records[i].km - records[i-1].km) * 100
   const avgConsumption = () => {
     if (records.length < 2) return '--'
     let totalFuel = 0
@@ -66,7 +93,15 @@ export default function FuelPage() {
     return (total / records.length).toFixed(0)
   }
 
-  // 添加记录
+  // ========== 添加记录 ==========
+  //
+  // 校验规则（km 语义：仪表盘累计读数）：
+  //   1. 必填字段：date, km, fuel, price
+  //   2. 新 km > 所有已有记录的最大 km（仪表盘只增不减，不受日期顺序影响）
+  //      例：先加 4/2 的 200km，再加 3/20 的 120km → 拒绝（120 < 200）
+  //      例：先加 4/2 的 200km，再加 4/5 的 300km → 接受（300 > 200）
+  //
+  // 数据写入：unshift（插入数组头部），保持 newest-first 顺序
   const addRecord = () => {
     const r = newRecord
     if (!r.date || !r.km || !r.fuel || !r.price) {
