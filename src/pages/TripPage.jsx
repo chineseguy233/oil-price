@@ -347,7 +347,27 @@ function ResultCard({ result }) {
         </div>
 
         {/* 高速费 */}
-        {!is_free_toll && !unknown && (
+        {is_free_toll ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px' }}>🛣️</span>
+              <span style={{ fontSize: '14px', color: '#374151' }}>高速费</span>
+            </div>
+            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#10b981' }}>
+              免费
+            </div>
+          </div>
+        ) : unknown ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px' }}>🛣️</span>
+              <span style={{ fontSize: '14px', color: '#374151' }}>高速费</span>
+            </div>
+            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#9ca3af' }}>
+              ¥{toll_cost}（预估）
+            </div>
+          </div>
+        ) : (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '18px' }}>🛣️</span>
@@ -366,7 +386,7 @@ function ResultCard({ result }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '15px', color: '#374151', fontWeight: '600' }}>合计</span>
           <span style={{ fontSize: '26px', fontWeight: 'bold', color: '#1f2937' }}>
-            ¥{total_cost}{unknown ? '+' : ''}
+            ¥{total_cost}{unknown ? '（预估）' : ''}
           </span>
         </div>
       </div>
@@ -416,7 +436,7 @@ function ResultCard({ result }) {
       <div style={{ display: 'flex', gap: '10px' }}>
         <button
           onClick={() => {
-            const text = `北京→上海全程约${total_km}公里，油费约¥${oil_cost}，高速费${is_free_toll ? '免费' : '¥' + toll_cost}`
+            const text = `北京→上海全程约${total_km}公里，油费约¥${oil_cost}，高速费${is_free_toll ? '免费' : unknown ? '¥' + toll_cost + '（预估）' : '¥' + toll_cost}`
             navigator.clipboard?.writeText(text).catch(() => {})
           }}
           style={{

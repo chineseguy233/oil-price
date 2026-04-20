@@ -365,7 +365,11 @@ async function calculateRouteOilCost({
   const free_toll_saving = is_free_toll ? toll_cost : 0;
 
   // 8. 总费用
-  const total_cost = (oil_cost !== null ? oil_cost : 0) + (is_free_toll ? 0 : toll_cost);
+  // - is_free_toll=true  →  高速免费，total不含高速费
+  // - is_free_toll=false →  正常收费，total含高速费
+  // - unknown=true        →  高速费待确认，total含估算高速费，标注（预估）
+  const total_cost = (oil_cost !== null ? oil_cost : 0)
+    + ((is_free_toll === false || is_free_toll === null) ? toll_cost : 0);
 
   // 9. 各省里程权重（用于展示）
   const province_distances = {};

@@ -33,57 +33,55 @@ function navigateTo(location, name) {
 
 // ========== 真实高德地图 ==========
 function RealMap({ stations, userLocation, radius, onStationClick }) {
-  const mapRef = useRef(null)
-  const mapInstance = useRef(null)
+  const containerRef = useRef(null)   // 固定容器，mount 时就存在
+  const mapRef = useRef(null)         // AMap 实例持有
   const markersRef = useRef([])
-  const [amapReady, setAmapReady] = useState(false)
+  const [mapReady, setMapReady] = useState(false)
 
+  // 等待 AMap 加载完成（最多15秒），再初始化地图
   useEffect(() => {
-    if (window.AMap) {
-      setAmapReady(true)
-      return
-    }
-    const timer = setInterval(() => {
-      if (window.AMap) {
-        setAmapReady(true)
-        clearInterval(timer)
+    let timer
+
+    function tryInit() {
+      if (!window.AMap || !containerRef.current || mapRef.current) return
+      try {
+        mapRef.current = new window.AMap.Map(containerRef.current, {
+          zoom: 13,
+          center: userLocation ? [userLocation.lng, userLocation.lat] : undefined,
+          mapStyle: 'amap://styles/whitesmoke',
+        })
+        mapRef.current.addControl(new window.AMap.Scale())
+        setMapReady(true)
+      } catch (e) {
+        console.error('AMap init failed:', e)
       }
-    }, 200)
-    const timeout = setTimeout(() => clearInterval(timer), 15000)
-    return () => { clearInterval(timer); clearTimeout(timeout) }
-  }, [])
+    }
 
-  useEffect(() => {
-    if (!amapReady || !mapRef.current || mapInstance.current) return
-
-    try {
-      mapInstance.current = new window.AMap.Map(mapRef.current, {
-        zoom: 13,
-        center: userLocation ? [userLocation.lng, userLocation.lat] : undefined,
-        mapStyle: 'amap://styles/whitesmoke',
-      })
-      mapInstance.current.addControl(new window.AMap.Scale())
-    } catch (e) {
-      console.error('AMap init failed:', e)
+    if (window.AMap) {
+      tryInit()
+    } else {
+      timer = setInterval(() => {
+        if (window.AMap) {
+          clearInterval(timer)
+          tryInit()
+        }
+      }, 200)
+      setTimeout(() => clearInterval(timer), 15000)
     }
 
     return () => {
-      if (mapInstance.current) {
-        mapInstance.current.destroy()
-        mapInstance.current = null
+      if (timer) clearInterval(timer)
+      if (mapRef.current) {
+        mapRef.current.destroy()
+        mapRef.current = null
       }
     }
-  }, [amapReady])
-
-  useEffect(() => {
-    if (!mapInstance.current || !userLocation) return
-    mapInstance.current.setCenter([userLocation.lng, userLocation.lat])
   }, [userLocation])
 
   useEffect(() => {
-    if (!mapInstance.current) return
+    if (!mapRef.current) return
 
-    markersRef.current.forEach(m => mapInstance.current.remove(m))
+    markersRef.current.forEach(m => mapRef.current.remove(m))
     markersRef.current = []
 
     if (!userLocation) return
@@ -94,27 +92,26 @@ function RealMap({ stations, userLocation, radius, onStationClick }) {
       content: '<div style="width:12px;height:12px;background:#2563eb;border-radius:50%;border:3px solid white;box-shadow:0 0 0 2px #2563eb;"></div>',
       offset: new window.AMap.Pixel(-6, -6),
     })
-    mapInstance.current.add(userMarker)
+    mapRef.current.add(userMarker)
     markersRef.current.push(userMarker)
 
     stations.forEach(s => {
       if (!s.location) return
       const [lng, lat] = s.location.split(',').map(Number)
-      const priceText = s.price92 != null ? `¥${s.price92}` : ''
       const brandText = s.brand || ''
       const marker = new window.AMap.Marker({
         position: new window.AMap.LngLat(lng, lat),
-        title: `${s.name} ${priceText}`,
+        title: `${s.name}`,
         content: `<div style="background:#f59e0b;color:white;padding:2px 6px;border-radius:10px;font-size:11px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.2);cursor:pointer;">${brandText}</div>`,
         offset: new window.AMap.Pixel(-20, -10),
       })
       marker.on('click', () => onStationClick && onStationClick(s))
-      mapInstance.current.add(marker)
+      mapRef.current.add(marker)
       markersRef.current.push(marker)
     })
 
     if (stations.length > 0) {
-      mapInstance.current.setFitView(markersRef.current, false, [50, 50, 50, 50])
+      mapRef.current.setFitView(markersRef.current, false, [50, 50, 50, 50])
     }
   }, [stations, onStationClick])
 
@@ -127,7 +124,12 @@ function RealMap({ stations, userLocation, radius, onStationClick }) {
       boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
     }}>
       <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px', fontWeight: '500' }}>📍 附近加油站</div>
-      {!amapReady ? (
+      <div ref={containerRef} style={{
+        width: '100%', height: '180px', borderRadius: '10px', overflow: 'hidden',
+        border: '1px solid #e5e7eb',
+        display: mapReady ? 'block' : 'none',
+      }} />
+      {!mapReady && (
         <div style={{
           width: '100%', height: '180px', borderRadius: '10px', overflow: 'hidden',
           border: '1px solid #e5e7eb', background: '#f9fafb',
@@ -137,34 +139,16 @@ function RealMap({ stations, userLocation, radius, onStationClick }) {
           <div style={{ fontSize: '20px' }}>🗺️</div>
           <div style={{ fontSize: '12px', color: '#9ca3af' }}>地图加载中...</div>
         </div>
-      ) : (
-        <div
-          ref={mapRef}
-          style={{
-            width: '100%',
-            height: '180px',
-            borderRadius: '10px',
-            overflow: 'hidden',
-            border: '1px solid #e5e7eb',
-          }}
-        />
       )}
       <div style={{ textAlign: 'center', fontSize: '10px', color: '#9ca3af', marginTop: '6px' }}>
-        {amapReady ? `共${stations.length}个油站 · 点击标记查看详情` : '等待地图加载...'}
+        {mapReady ? `共${stations.length}个油站 · 点击标记查看详情` : '等待地图加载...'}
       </div>
     </div>
   )
 }
 
 // ========== 加油站卡片 ==========
-function StationCard({ station, sortKey, provincePrice }) {
-  const hasPrice = station.price92 != null || station.price95 != null
-  const avgPrice = station.price92 != null && station.price95 != null
-    ? ((station.price92 + station.price95) / 2).toFixed(2)
-    : (station.price92 || station.price95)?.toFixed(2)
-
-  const isCheap = sortKey === 'price92' || sortKey === 'price95'
-  const discount = station.discount || null
+function StationCard({ station }) {
 
   return (
     <div style={{
@@ -173,29 +157,11 @@ function StationCard({ station, sortKey, provincePrice }) {
       padding: '16px',
       marginBottom: '12px',
       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-      border: isCheap ? '1px solid #fef3c7' : '1px solid transparent',
-      position: 'relative',
-      overflow: 'hidden',
+      border: '1px solid transparent',
     }}>
-      {isCheap && station.price92 != null && (
-        <div style={{
-          position: 'absolute',
-          top: '0',
-          right: '0',
-          background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-          color: 'white',
-          fontSize: '10px',
-          padding: '2px 8px',
-          borderBottomLeftRadius: '8px',
-          fontWeight: '600',
-        }}>
-          较便宜
-        </div>
-      )}
-
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#1f2937', marginBottom: '4px', paddingRight: '50px' }}>
+          <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#1f2937', marginBottom: '4px' }}>
             {station.name}
           </div>
           <div style={{ fontSize: '12px', color: '#9ca3af', lineHeight: '1.4' }}>
@@ -217,45 +183,6 @@ function StationCard({ station, sortKey, provincePrice }) {
           marginLeft: '8px',
         }}>
           📍 {station.distance}
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
-        <div style={{
-          flex: 1,
-          background: '#fef3c7',
-          borderRadius: '10px',
-          padding: '10px 12px',
-          textAlign: 'center',
-        }}>
-          <div style={{ fontSize: '11px', color: '#92400e', marginBottom: '2px' }}>92#汽油</div>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#d97706' }}>
-            {station.price92 != null ? `¥${station.price92}` : '—'}
-          </div>
-          {station.price92 != null && (
-            <div style={{ fontSize: '9px', color: '#b45309', marginTop: '2px' }}>模拟数据</div>
-          )}
-          {!station.price92 && provincePrice && (
-            <div style={{ fontSize: '10px', color: '#b45309', marginTop: '2px' }}>参考价¥{provincePrice}</div>
-          )}
-        </div>
-        <div style={{
-          flex: 1,
-          background: '#ede9fe',
-          borderRadius: '10px',
-          padding: '10px 12px',
-          textAlign: 'center',
-        }}>
-          <div style={{ fontSize: '11px', color: '#6d28d9', marginBottom: '2px' }}>95#汽油</div>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#7c3aed' }}>
-            {station.price95 != null ? `¥${station.price95}` : '—'}
-          </div>
-          {station.price95 != null && (
-            <div style={{ fontSize: '9px', color: '#7c3aed', marginTop: '2px' }}>模拟数据</div>
-          )}
-          {!station.price95 && provincePrice && (
-            <div style={{ fontSize: '10px', color: '#7c3aed', marginTop: '2px' }}>参考价¥{provincePrice}</div>
-          )}
         </div>
       </div>
 
@@ -282,19 +209,6 @@ function StationCard({ station, sortKey, provincePrice }) {
             color: '#c2410c',
           }}>
             ⭐ {station.rating.toFixed(1)}
-          </div>
-        )}
-
-        {discount && (
-          <div style={{
-            padding: '4px 10px',
-            background: '#fef2f2',
-            borderRadius: '8px',
-            fontSize: '11px',
-            color: '#dc2626',
-            fontWeight: '600',
-          }}>
-            🎁 {discount}
           </div>
         )}
 
@@ -352,12 +266,7 @@ export default function StationsPage({ oilData } = {}) {
   const [total, setTotal] = useState(0)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  // 当前定位省份的油价（参考价）
-  const provincePrice = useMemo(() => {
-    if (!oilData || !userLocation?.province) return null
-    const data = oilData[userLocation.province]
-    return data?.['92'] ?? null
-  }, [oilData, userLocation?.province])
+  // 当前定位省份的油价（已删除油价功能，此数据不再需要）
 
   // 加载附近加油站（GPS定位 + 分页）
   const loadNearbyStations = useCallback(async (pageNum = 1) => {
@@ -404,16 +313,9 @@ export default function StationsPage({ oilData } = {}) {
     loadNearbyStations(page + 1)
   }
 
-  // 排序
+  // 排序（仅按距离）
   const sortedStations = [...stations].sort((a, b) => {
-    if (sortKey === 'distance') {
-      return (a.distanceRaw || 999999) - (b.distanceRaw || 999999)
-    } else if (sortKey === 'price92') {
-      return (a.price92 ?? 999) - (b.price92 ?? 999)
-    } else if (sortKey === 'price95') {
-      return (a.price95 ?? 999) - (b.price95 ?? 999)
-    }
-    return 0
+    return (a.distanceRaw || 999999) - (b.distanceRaw || 999999)
   })
 
   return (
@@ -510,8 +412,6 @@ export default function StationsPage({ oilData } = {}) {
         <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: '500', marginRight: '4px' }}>排序:</span>
         {[
           { key: 'distance', label: '距离优先' },
-          { key: 'price92', label: '92#最便宜' },
-          { key: 'price95', label: '95#最便宜' },
         ].map(opt => (
           <button
             key={opt.key}
@@ -586,8 +486,6 @@ export default function StationsPage({ oilData } = {}) {
             <StationCard
               key={`${station.name}-${station.location || idx}`}
               station={station}
-              sortKey={sortKey}
-              provincePrice={provincePrice}
             />
           ))}
 

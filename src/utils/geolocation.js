@@ -199,11 +199,11 @@ function formatDistance(meters) {
  * 从名称中提取加油站品牌
  */
 function extractBrand(name) {
-  const brands = ['中石化', '中石油', '壳牌', '中化石油', '道达尔', '民营', '延长壳牌', '中油BP', '加德士', '埃尼', 'SK', 'CIRCLE_K', '海海湾', '京标', '中化道达尔']
+  const brands = ['中石化', '中石油', '壳牌', '中化石油', '道达尔', '延长壳牌', '中油BP', '加德士', '埃尼', 'SK', 'CIRCLE_K', '海海湾', '京标', '中化道达尔', '协能']
   for (const b of brands) {
     if (name.includes(b)) return b
   }
-  return '民营'
+  return ''
 }
 
 // ========== 完整流程：GPS → IP兜底 → 逆地理编码 ==========

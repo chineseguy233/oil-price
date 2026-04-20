@@ -3,9 +3,14 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// 加载 .env 环境变量（生产环境可用 process.env）
+try {
+    require('dotenv').config({ path: path.join(__dirname, '../.env') });
+} catch (e) { /* dotenv optional */ }
+
 const app = express();
 app.use(express.json());
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // 挂载子路由
 const routeRouter = require('./routes/route.cjs');
@@ -17,6 +22,9 @@ const USERS_FILE = path.join(__dirname, '../data/users.json');
 
 // 验证码存储 (内存中，5分钟过期)
 const verificationCodes = new Map();
+
+// 腾讯云 SMS
+const { sendVerificationCode, isConfigured: isSmsConfigured } = require('./sms/tencent_sms.cjs');
 
 // 确保users文件存在
 function getUsers() {
@@ -78,28 +86,57 @@ function authMiddleware(req, res, next) {
 // ============ 用户API ============
 
 // 发送验证码
-app.post('/api/auth/code', (req, res) => {
+app.post('/api/auth/code', async (req, res) => {
     const { phone } = req.body;
     if (!phone || !/^1\d{10}$/.test(phone)) {
         return res.json({ success: false, error: '手机号格式错误' });
     }
+
     // 生成6位验证码
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    console.log(`[验证码] ${phone}: ${code}`);
-    
+    const expireMinutes = 5;
+
+    // 检查 SMS 是否已配置
+    if (!isSmsConfigured()) {
+        // 降级：未配置 SMS 时打印到日志（开发调试用）
+        console.warn(`[验证码] ${phone}: ${code} （SMS 未配置，请设置环境变量）`);
+        console.log(`[开发模式] 验证码：${code}`);
+
+        verificationCodes.set(phone, {
+            code,
+            expiresAt: Date.now() + expireMinutes * 60 * 1000,
+        });
+
+        setTimeout(() => {
+            verificationCodes.delete(phone);
+            console.log(`[验证码] ${phone} 已过期`);
+        }, expireMinutes * 60 * 1000);
+
+        return res.json({
+            success: true,
+            message: '验证码已发送（开发模式：见服务端日志）',
+            devMode: true,
+        });
+    }
+
+    // 发送腾讯云 SMS
+    const smsResult = await sendVerificationCode(phone, code, expireMinutes);
+    if (!smsResult.success) {
+        return res.status(400).json({ success: false, error: smsResult.message });
+    }
+
     // 存储验证码，5分钟过期
     verificationCodes.set(phone, {
         code,
-        expiresAt: Date.now() + 5 * 60 * 1000
+        expiresAt: Date.now() + expireMinutes * 60 * 1000,
     });
-    
+
     // 5分钟后删除验证码
     setTimeout(() => {
         verificationCodes.delete(phone);
         console.log(`[验证码] ${phone} 已过期`);
-    }, 5 * 60 * 1000);
-    
-    // 安全：不再明文返回验证码
+    }, expireMinutes * 60 * 1000);
+
     res.json({ success: true, message: '验证码已发送' });
 });
 
