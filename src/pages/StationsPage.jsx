@@ -3,24 +3,6 @@ import { autoLocate, amapSearchNearby } from '../utils/geolocation'
 
 const API_BASE = '/api'
 
-// 省份列表（按区域分组）
-const PROVINCES = [
-  // 华北
-  '北京', '天津', '河北', '山西', '内蒙古',
-  // 东北
-  '辽宁', '吉林', '黑龙江',
-  // 华东
-  '上海', '江苏', '浙江', '安徽', '福建', '江西', '山东',
-  // 华中
-  '河南', '湖北', '湖南',
-  // 华南
-  '广东', '广西', '海南',
-  // 西南
-  '重庆', '四川', '贵州', '云南', '西藏',
-  // 西北
-  '陕西', '甘肃', '青海', '宁夏', '新疆',
-]
-
 // 附近半径选项
 const RADIUS_OPTIONS = [
   { value: 1000, label: '1km' },
@@ -45,7 +27,6 @@ function formatDistance(meters) {
 function navigateTo(location, name) {
   if (!location) return
   const [lng, lat] = location.split(',')
-  // 优先尝试高德地图URI scheme
   const url = `https://uri.amap.com/navigation?to=${lng},${lat},${encodeURIComponent(name)}&mode=car&callnative=1`
   window.open(url, '_blank')
 }
@@ -57,7 +38,6 @@ function RealMap({ stations, userLocation, radius, onStationClick }) {
   const markersRef = useRef([])
   const [amapReady, setAmapReady] = useState(false)
 
-  // 等待 AMap SDK 加载完成（SDK 通过 CDN 异步加载）
   useEffect(() => {
     if (window.AMap) {
       setAmapReady(true)
@@ -69,12 +49,10 @@ function RealMap({ stations, userLocation, radius, onStationClick }) {
         clearInterval(timer)
       }
     }, 200)
-    // 最多等 15 秒
     const timeout = setTimeout(() => clearInterval(timer), 15000)
     return () => { clearInterval(timer); clearTimeout(timeout) }
   }, [])
 
-  // 初始化地图（仅在 SDK 就绪后执行一次）
   useEffect(() => {
     if (!amapReady || !mapRef.current || mapInstance.current) return
 
@@ -97,23 +75,19 @@ function RealMap({ stations, userLocation, radius, onStationClick }) {
     }
   }, [amapReady])
 
-  // 更新中心点
   useEffect(() => {
     if (!mapInstance.current || !userLocation) return
     mapInstance.current.setCenter([userLocation.lng, userLocation.lat])
   }, [userLocation])
 
-  // 更新标记
   useEffect(() => {
     if (!mapInstance.current) return
 
-    // 清除旧标记
     markersRef.current.forEach(m => mapInstance.current.remove(m))
     markersRef.current = []
 
     if (!userLocation) return
 
-    // 用户位置标记（蓝色）
     const userMarker = new window.AMap.Marker({
       position: new window.AMap.LngLat(userLocation.lng, userLocation.lat),
       title: '您的位置',
@@ -123,7 +97,6 @@ function RealMap({ stations, userLocation, radius, onStationClick }) {
     mapInstance.current.add(userMarker)
     markersRef.current.push(userMarker)
 
-    // 加油站标记（橙色）
     stations.forEach(s => {
       if (!s.location) return
       const [lng, lat] = s.location.split(',').map(Number)
@@ -140,7 +113,6 @@ function RealMap({ stations, userLocation, radius, onStationClick }) {
       markersRef.current.push(marker)
     })
 
-    // 自动缩放视野
     if (stations.length > 0) {
       mapInstance.current.setFitView(markersRef.current, false, [50, 50, 50, 50])
     }
@@ -184,7 +156,7 @@ function RealMap({ stations, userLocation, radius, onStationClick }) {
   )
 }
 
-// ========== 加油站卡片（增强版）============
+// ========== 加油站卡片 ==========
 function StationCard({ station, sortKey, provincePrice }) {
   const hasPrice = station.price92 != null || station.price95 != null
   const avgPrice = station.price92 != null && station.price95 != null
@@ -205,7 +177,6 @@ function StationCard({ station, sortKey, provincePrice }) {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* 左侧价格优势标签 */}
       {isCheap && station.price92 != null && (
         <div style={{
           position: 'absolute',
@@ -222,7 +193,6 @@ function StationCard({ station, sortKey, provincePrice }) {
         </div>
       )}
 
-      {/* 第一行：名称 + 距离 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#1f2937', marginBottom: '4px', paddingRight: '50px' }}>
@@ -250,7 +220,6 @@ function StationCard({ station, sortKey, provincePrice }) {
         </div>
       </div>
 
-      {/* 第二行：价格（模拟数据标注）+ 品牌 */}
       <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
         <div style={{
           flex: 1,
@@ -290,7 +259,6 @@ function StationCard({ station, sortKey, provincePrice }) {
         </div>
       </div>
 
-      {/* 第三行：品牌 + 评分 + 电话 + 导航按钮 */}
       <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
         {station.brand && (
           <div style={{
@@ -370,16 +338,13 @@ function StationCard({ station, sortKey, provincePrice }) {
   )
 }
 
-
-
-// ========== 加油站比价页面 ==========
-export default function StationsPage({ selectedRegion, setSelectedRegion, regions, oilData } = {}) {
+// ========== 加油站比价页面（仅附近） ==========
+export default function StationsPage({ oilData } = {}) {
   const [stations, setStations] = useState([])
   const [loading, setLoading] = useState(false)
   const [sortKey, setSortKey] = useState('distance')
-  const [searchMode, setSearchMode] = useState('province') // 'province' | 'nearby'
-  const [locationStatus, setLocationStatus] = useState(null) // null | 'locating' | 'success' | 'error'
-  const [userLocation, setUserLocation] = useState(null) // { lat, lng, province, city }
+  const [locationStatus, setLocationStatus] = useState(null)
+  const [userLocation, setUserLocation] = useState(null)
   const [locMessage, setLocMessage] = useState('')
   const [locError, setLocError] = useState('')
   const [radius, setRadius] = useState(5000)
@@ -387,25 +352,12 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
   const [total, setTotal] = useState(0)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  // 获取当前省份油价（作为参考价，有真实数据时显示参考价）
+  // 当前定位省份的油价（参考价）
   const provincePrice = useMemo(() => {
-    if (!oilData || !selectedRegion) return null
-    const data = oilData[selectedRegion]
+    if (!oilData || !userLocation?.province) return null
+    const data = oilData[userLocation.province]
     return data?.['92'] ?? null
-  }, [oilData, selectedRegion])
-
-  // 加载省份加油站（模拟数据）
-  const loadProvinceStations = useCallback(() => {
-    setLoading(true)
-    setStations([]) // 切换省份时先清空旧数据
-    fetch(`${API_BASE}/stations/search?province=${encodeURIComponent(selectedRegion)}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.success) setStations(d.stations || [])
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
-  }, [selectedRegion])
+  }, [oilData, userLocation?.province])
 
   // 加载附近加油站（GPS定位 + 分页）
   const loadNearbyStations = useCallback(async (pageNum = 1) => {
@@ -417,18 +369,10 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
       const loc = await autoLocate()
       setUserLocation(loc)
       setLocationStatus('success')
-
-      // 保存定位成功消息
       setLocMessage(loc.message || (loc.source === 'gps' ? 'GPS定位成功' : '网络定位成功'))
 
       const result = await amapSearchNearby(loc.lat, loc.lng, radius, pageNum)
-      // 定位成功后：自动设置省份（联动油价Tab）
-      if (loc.province && setSelectedRegion) {
-        // 仅在定位省份在列表中时才切换
-        if (regions && regions.includes(loc.province)) {
-          setSelectedRegion(loc.province)
-        }
-      }
+
       if (pageNum === 1) {
         setStations(result.stations)
       } else {
@@ -440,26 +384,19 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
       console.error('定位/搜索失败:', e)
       setLocError(e.message || '定位失败')
       setLocationStatus('error')
-      // fallback 到省份数据
-      if (pageNum === 1) loadProvinceStations()
     } finally {
       setLoading(false)
       setLoadingMore(false)
     }
-  }, [radius, loadProvinceStations])
+  }, [radius])
 
-  // 搜索模式切换时重新加载
+  // 首次加载
   useEffect(() => {
     setPage(1)
     setStations([])
-    if (searchMode === 'province') {
-      setLocationStatus(null)
-      loadProvinceStations()
-    } else {
-      setLocationStatus('locating')
-      loadNearbyStations(1)
-    }
-  }, [searchMode, selectedRegion, radius])
+    setLocationStatus('locating')
+    loadNearbyStations(1)
+  }, [radius])
 
   // 加载更多
   const handleLoadMore = () => {
@@ -491,157 +428,73 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
         alignItems: 'center',
         gap: '8px',
       }}>
-        <span>🔍</span> 加油站比价
+        <span>🔍</span> 附近加油站
       </div>
 
-      {/* 搜索模式切换 */}
+      {/* 定位状态 */}
       <div style={{
         background: 'white',
         borderRadius: '14px',
-        padding: '14px 16px',
+        padding: '12px 16px',
         marginBottom: '12px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
       }}>
-        <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '10px', fontWeight: '500' }}>查找方式</div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            onClick={() => setSearchMode('nearby')}
-            style={{
-              flex: 1,
-              padding: '10px',
-              borderRadius: '10px',
-              border: 'none',
-              background: searchMode === 'nearby' ? 'linear-gradient(135deg, #2563eb, #1d4ed8)' : '#f3f4f6',
-              color: searchMode === 'nearby' ? 'white' : '#6b7280',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-            }}
-          >
-            {searchMode === 'nearby' && locationStatus === 'locating' ? '📍 定位中...' : '📍 附近'}
-          </button>
-          <button
-            onClick={() => setSearchMode('province')}
-            style={{
-              flex: 1,
-              padding: '10px',
-              borderRadius: '10px',
-              border: 'none',
-              background: searchMode === 'province' ? 'linear-gradient(135deg, #2563eb, #1d4ed8)' : '#f3f4f6',
-              color: searchMode === 'province' ? 'white' : '#6b7280',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-            }}
-          >
-            🗺 按省份
-          </button>
-        </div>
-
-        {/* 定位状态提示 - 改进版 */}
-        {searchMode === 'nearby' && (
-          <div style={{ marginTop: '10px', fontSize: '12px', minHeight: '20px' }}>
-            {locationStatus === 'success' && userLocation && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: '#10b981', fontWeight: '600' }}>
-                  {userLocation.source === 'gps' ? '🛰 GPS精确定位' : '🌐 网络定位'}
-                </span>
-                <span style={{ color: '#6b7280' }}>
-                  {userLocation.city || userLocation.province}，周边 {sortedStations.length} 个油站
-                </span>
-              </div>
-            )}
-            {locationStatus === 'error' && (
-              <div style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>⚠️ {locError}</span>
-                <span style={{ color: '#9ca3af' }}>，已切换到省份数据</span>
-              </div>
-            )}
-            {locationStatus === 'locating' && (
-              <span style={{ color: '#2563eb' }}>📍 正在获取您的位置...</span>
-            )}
-            {!locationStatus && (
-              <span style={{ color: '#9ca3af' }}>点击「附近」将获取您的位置来查找周边加油站</span>
-            )}
+        {locationStatus === 'success' && userLocation && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+            <span style={{ color: '#10b981', fontWeight: '600' }}>
+              {userLocation.source === 'gps' ? '🛰 GPS精确定位' : '🌐 网络定位'}
+            </span>
+            <span style={{ color: '#6b7280' }}>
+              {userLocation.city || userLocation.province}，周边 {sortedStations.length} 个油站
+            </span>
           </div>
+        )}
+        {locationStatus === 'error' && (
+          <div style={{ color: '#ef4444', fontSize: '13px' }}>
+            ⚠️ {locError}
+          </div>
+        )}
+        {locationStatus === 'locating' && (
+          <span style={{ color: '#2563eb', fontSize: '13px' }}>📍 正在获取您的位置...</span>
+        )}
+        {!locationStatus && (
+          <span style={{ color: '#9ca3af', fontSize: '13px' }}>正在获取您的位置...</span>
         )}
       </div>
 
-      {/* 半径选择（仅附近模式显示） */}
-      {searchMode === 'nearby' && (
-        <div style={{
-          background: 'white',
-          borderRadius: '14px',
-          padding: '12px 16px',
-          marginBottom: '12px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-        }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: '500' }}>搜索范围:</span>
-            {RADIUS_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => {
-                  setRadius(opt.value)
-                  setPage(1)
-                }}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: radius === opt.value ? '#2563eb' : '#f3f4f6',
-                  color: radius === opt.value ? 'white' : '#6b7280',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  fontWeight: '500',
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+      {/* 半径选择 */}
+      <div style={{
+        background: 'white',
+        borderRadius: '14px',
+        padding: '12px 16px',
+        marginBottom: '12px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+      }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: '500' }}>搜索范围:</span>
+          {RADIUS_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => {
+                setRadius(opt.value)
+                setPage(1)
+              }}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '8px',
+                border: 'none',
+                background: radius === opt.value ? '#2563eb' : '#f3f4f6',
+                color: radius === opt.value ? 'white' : '#6b7280',
+                fontSize: '12px',
+                cursor: 'pointer',
+                fontWeight: '500',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
-      )}
-
-      {/* 省份选择（仅省份模式显示） */}
-      {searchMode === 'province' && (
-        <div style={{
-          background: 'white',
-          borderRadius: '14px',
-          padding: '14px 16px',
-          marginBottom: '12px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-        }}>
-          <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px', fontWeight: '500' }}>选择省份</div>
-          <select
-            value={selectedRegion}
-            onChange={e => {
-              setSelectedRegion(e.target.value)
-              const recent = JSON.parse(localStorage.getItem('recent_provinces') || '[]')
-              const updated = [e.target.value, ...recent.filter(r => r !== e.target.value)].slice(0, 3)
-              localStorage.setItem('recent_provinces', JSON.stringify(updated))
-            }}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: '10px',
-              border: '1px solid #e5e7eb',
-              fontSize: '14px',
-              background: '#f9fafb',
-              cursor: 'pointer',
-              color: '#374151',
-            }}
-          >
-            {(regions || []).map(p => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-        </div>
-      )}
+      </div>
 
       {/* 排序选项 */}
       <div style={{
@@ -680,30 +533,16 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
       </div>
 
       {/* 数据来源说明 */}
-      {searchMode === 'nearby' && (
-        <div style={{
-          background: '#eff6ff',
-          borderRadius: '10px',
-          padding: '8px 12px',
-          marginBottom: '12px',
-          fontSize: '11px',
-          color: '#3b82f6',
-        }}>
-          💡 数据来源：高德地图POI · 油价为该省参考均价 · 实际价格以加油站为准
-        </div>
-      )}
-      {searchMode === 'province' && (
-        <div style={{
-          background: '#fef3c7',
-          borderRadius: '10px',
-          padding: '8px 12px',
-          marginBottom: '12px',
-          fontSize: '11px',
-          color: '#92400e',
-        }}>
-          📊 数据来源：各省油价统计平台 · 显示该省油价参考区间 · 实际价格以当地加油站为准
-        </div>
-      )}
+      <div style={{
+        background: '#eff6ff',
+        borderRadius: '10px',
+        padding: '8px 12px',
+        marginBottom: '12px',
+        fontSize: '11px',
+        color: '#3b82f6',
+      }}>
+        💡 数据来源：高德地图POI · 油价为该省参考均价 · 实际价格以加油站为准
+      </div>
 
       {/* 地图 */}
       {userLocation && stations.length > 0 && (
@@ -712,13 +551,7 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
           userLocation={userLocation}
           radius={radius}
           onStationClick={(station) => {
-            // 滚动到卡片位置
-            const idx = sortedStations.findIndex(s => s.name === station.name)
-            if (idx >= 0) {
-              setPage(1)
-              // 滚动到列表顶部
-              window.scrollTo({ top: 0, behavior: 'smooth' })
-            }
+            window.scrollTo({ top: 0, behavior: 'smooth' })
           }}
         />
       )}
@@ -745,7 +578,7 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
             alignItems: 'center',
           }}>
             <span>共找到 {sortedStations.length}{total > sortedStations.length ? `/${total}` : ''} 个加油站</span>
-            {searchMode === 'nearby' && userLocation?.source === 'ip' && (
+            {userLocation?.source === 'ip' && (
               <span style={{ color: '#f59e0b', fontSize: '11px' }}>⚠️ 网络定位，精度较低</span>
             )}
           </div>
@@ -759,7 +592,7 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
           ))}
 
           {/* 加载更多 */}
-          {searchMode === 'nearby' && sortedStations.length < total && (
+          {sortedStations.length < total && (
             <div style={{ textAlign: 'center', padding: '16px' }}>
               <button
                 onClick={handleLoadMore}
@@ -778,6 +611,18 @@ export default function StationsPage({ selectedRegion, setSelectedRegion, region
               </button>
             </div>
           )}
+        </div>
+      ) : locationStatus === 'error' ? (
+        <div style={{
+          background: 'white',
+          borderRadius: '16px',
+          padding: '40px',
+          textAlign: 'center',
+          color: '#d1d5db',
+          fontSize: '14px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+        }}>
+          定位失败，请检查定位权限后重试
         </div>
       ) : (
         <div style={{

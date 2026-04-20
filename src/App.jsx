@@ -1906,7 +1906,7 @@ export default function App({ onGotoTrip, onGotoRankings }) {
           <TrendPage selectedRegion={selectedRegion} setSelectedRegion={setSelectedRegion} regions={regions} />
         )}
         {tab === 'fuel' && (user ? <FuelPage /> : null)}
-        {tab === 'stations' && (user ? <StationsPage selectedRegion={selectedRegion} setSelectedRegion={setSelectedRegion} regions={regions} oilData={oilData} /> : null)}
+        {tab === 'stations' && (user ? <StationsPage oilData={oilData} /> : null)}
         {tab === 'my' && (user ? <MyPage selectedRegion={selectedRegion} user={user} onLogout={handleLogout} showLoginModal={showLoginModal} setShowLoginModal={setShowLoginModal} /> : null)}
       </div>
 
