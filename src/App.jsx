@@ -332,9 +332,43 @@ function OilPricePage({ selectedOil, setSelectedOil, selectedRegion, setSelected
               padding: '4px 12px',
               fontSize: '13px',
               fontWeight: 'bold',
+              marginBottom: '6px',
             }}>
               {OIL_TYPES.find(t => t.key === selectedOil)?.label}
             </div>
+            {/* 分享按钮 */}
+            <button
+              onClick={async () => {
+                const text = `⛽ ${selectedRegion}今日${OIL_TYPES.find(t => t.key === selectedOil)?.label}油价：¥${currentPrice}/升
+📊 历史走势、油价提醒、附近加油站
+🔗 oil-price.app`
+                if (navigator.share) {
+                  try {
+                    await navigator.share({
+                      title: `【油价守护者】${selectedRegion}${OIL_TYPES.find(t => t.key === selectedOil)?.label} ¥${currentPrice}/升`,
+                      text,
+                      url: window.location.href,
+                    })
+                    return
+                  } catch (e) {
+                    if (e.name === 'AbortError') return
+                  }
+                }
+                navigator.clipboard?.writeText(text).catch(() => {})
+              }}
+              style={{
+                background: 'none',
+                border: '1.5px solid #e5e7eb',
+                borderRadius: '8px',
+                padding: '3px 10px',
+                fontSize: '11px',
+                color: '#6b7280',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >📤 分享</button>
           </div>
         </div>
       </div>
@@ -1481,6 +1515,30 @@ function MyPage({ selectedRegion, user, onLogout, showLoginModal, setShowLoginMo
       {/* 功能菜单 */}
       <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
         <MenuItem icon="🔔" label="油价提醒" value={remindConfig ? `${remindConfig.province} ${OIL_TYPES.find(t => t.key === remindConfig.oilType)?.label}` : '未设置'} onClick={openRemindModal} />
+        <MenuItem
+          icon="📤"
+          label="分享给朋友"
+          onClick={async () => {
+            const text = `🚗 自驾出行查油价，就用「油价守护者」
+⛽ 实时查看全国各省市92#/95#/98#油价，对比历史走势
+🗺️ 附近加油站导航，找油站不迷路
+📊 油耗记录，自动计算百公里油耗
+🔗 oil-price.app`
+            if (navigator.share) {
+              try {
+                await navigator.share({
+                  title: '油价守护者 - 智能油价监测',
+                  text,
+                  url: window.location.href,
+                })
+                return
+              } catch (e) {
+                if (e.name === 'AbortError') return
+              }
+            }
+            navigator.clipboard?.writeText(text + '\n' + window.location.href).catch(() => {})
+          }}
+        />
       </div>
 
       {/* 油价提醒弹窗（系统自动判断阈值） */}

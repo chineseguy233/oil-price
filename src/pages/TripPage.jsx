@@ -435,8 +435,29 @@ function ResultCard({ result }) {
       {/* 操作按钮 */}
       <div style={{ display: 'flex', gap: '10px' }}>
         <button
-          onClick={() => {
-            const text = `北京→上海全程约${total_km}公里，油费约¥${oil_cost}，高速费${is_free_toll ? '免费' : unknown ? '¥' + toll_cost + '（预估）' : '¥' + toll_cost}`
+          onClick={async () => {
+            // 构造分享文本
+            const text = `🚗 ${from.name} → ${to.name}
+⛽ 全程约${total_km}公里，油费约¥${oil_cost}
+🛣️ 高速费${is_free_toll ? '免费' : unknown ? '¥' + toll_cost + '（预估）' : '¥' + toll_cost}
+💰 合计${total_cost}元${unknown ? '（预估）' : ''}
+🔗 oil-price.app`
+
+            // 优先用 Web Share API（移动端唤起原生分享）
+            if (navigator.share) {
+              try {
+                await navigator.share({
+                  title: `【油价守护者】${from.name}→${to.name}自驾费用`,
+                  text,
+                  url: window.location.href,
+                })
+                return
+              } catch (e) {
+                // 用户取消分享或分享失败，不做处理
+                if (e.name === 'AbortError') return
+              }
+            }
+            // 兜底：复制到剪贴板
             navigator.clipboard?.writeText(text).catch(() => {})
           }}
           style={{
