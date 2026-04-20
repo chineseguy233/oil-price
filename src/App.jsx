@@ -1327,7 +1327,7 @@ function MyPage({ selectedRegion }) {
     setLoadingHistory(true)
     fetch(`${API_BASE}/price-changes?province=${encodeURIComponent(configForm.province)}&days=30`)
       .then(r => r.json())
-      .then(d => { if (d.changes) setHistoryData(d.changes) })
+      .then(d => { if (d.history) setHistoryData(d.history) })
       .catch(() => {})
       .finally(() => setLoadingHistory(false))
   }, [configForm.province])
@@ -1349,35 +1349,37 @@ function MyPage({ selectedRegion }) {
     const cfg = { ...configForm, enabled: true }
     setRemindConfig(cfg)
     localStorage.setItem('oil_remind_config', JSON.stringify(cfg))
-    // 同步到服务器
-    if (user?.token) {
-      fetch(`${API_BASE}/remind`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.token}` },
-        body: JSON.stringify(cfg),
-      }).catch(() => {})
-    }
+    // 同步到服务器（无需登录）
+    fetch(`${API_BASE}/sync/remind`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user?.token || ''}` },
+      body: JSON.stringify(cfg),
+    }).catch(() => {})
     setShowRemindModal(false)
   }
 
   const clearRemindConfig = () => {
     setRemindConfig(null)
     localStorage.removeItem('oil_remind_config')
-    if (user?.token) {
-      fetch(`${API_BASE}/remind`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${user.token}` },
-      }).catch(() => {})
-    }
+    fetch(`${API_BASE}/sync/remind`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user?.token || ''}` },
+      body: JSON.stringify({ enabled: false }),
+    }).catch(() => {})
   }
 
   // 计算当前油号的30天最低/最高价
+  // historyData is { date: { "92": x, "95": y, ... } }
   const priceStats = useMemo(() => {
     if (!historyData || !configForm.oilType) return null
     const oilKey = configForm.oilType
-    const prices = historyData.map(d => d[oilKey]).filter(p => p != null)
+    const entries = Object.entries(historyData).sort((a, b) => a[0].localeCompare(b[0]))
+    const prices = entries.map(([, vals]) => vals[oilKey]).filter(p => p != null)
     if (prices.length === 0) return null
-    return { min: Math.min(...prices), max: Math.max(...prices), current: prices[0], count: prices.length }
+    const min = Math.min(...prices)
+    const max = Math.max(...prices)
+    const current = prices[prices.length - 1] // most recent date
+    return { min, max, current, count: prices.length }
   }, [historyData, configForm.oilType])
 
   const MenuItem = ({ icon, label, value, onClick, status }) => (

@@ -222,7 +222,8 @@ app.get('/api/sync/fuel', authMiddleware, (req, res) => {
 
 // 同步提醒设置
 app.post('/api/sync/remind', authMiddleware, (req, res) => {
-    const { settings } = req.body;
+    // 支持两种格式: { settings: {...} } 或直接 {...}
+    const settings = req.body.settings || req.body;
     const users = getUsers();
     
     if (users[req.user.phone]) {
@@ -542,39 +543,34 @@ function getOilPrices() {
 // 获取用户的提醒设置
 app.get('/api/remind', authMiddleware, (req, res) => {
     const users = getUsers();
-    const reminders = users[req.user.phone]?.remindSettings || [];
-    res.json({ success: true, reminders });
+    const remind = users[req.user.phone]?.remindSettings || null;
+    res.json({ success: true, remind });
 });
 
 // 设置油价提醒
 app.post('/api/remind', authMiddleware, (req, res) => {
-    const { province, oilType, threshold } = req.body;
-    
-    if (!province || !oilType || !threshold) {
+    const { province, oilType, enabled } = req.body;
+
+    if (!province || !oilType) {
         return res.json({ success: false, message: '缺少参数' });
     }
-    
+
     const users = getUsers();
     if (!users[req.user.phone]) {
         users[req.user.phone] = {};
     }
-    if (!users[req.user.phone].remindSettings) {
-        users[req.user.phone].remindSettings = [];
-    }
-    
-    const newRemind = {
-        id: Date.now().toString(),
+
+    // 新版：存储单一提醒配置（系统自动判断阈值，无需 threshold）
+    users[req.user.phone].remindSettings = {
         province,
         oilType,
-        threshold: parseFloat(threshold),
-        createdAt: new Date().toISOString(),
-        lastNotifiedPrice: null
+        enabled: enabled !== false,
+        updatedAt: new Date().toISOString(),
     };
-    
-    users[req.user.phone].remindSettings.push(newRemind);
+
     saveUsers(users);
-    
-    res.json({ success: true, remind: newRemind, message: '提醒设置成功' });
+
+    res.json({ success: true, remind: users[req.user.phone].remindSettings, message: '提醒设置成功' });
 });
 
 // 删除提醒
@@ -591,37 +587,76 @@ app.delete('/api/remind/:id', authMiddleware, (req, res) => {
     res.json({ success: true, message: '已删除提醒' });
 });
 
-// 检查油价是否触发提醒（内部接口，供定时任务调用）
+// 检查油价是否触发提醒（自动阈值：30天最低/最高价）
+// GET /api/remind/check
 app.get('/api/remind/check', authMiddleware, (req, res) => {
     const users = getUsers();
-    const reminders = users[req.user.phone]?.remindSettings || [];
+    const remindSettings = users[req.user.phone]?.remindSettings;
+    if (!remindSettings || !remindSettings.enabled) {
+        return res.json({ success: true, triggered: [] });
+    }
+
     const oilData = getOilPrices();
-    
+    const historyPath = path.join(__dirname, '../data/oil_history.json');
+
     if (!oilData || !oilData.prices) {
         return res.json({ success: true, triggered: [] });
     }
-    
-    const triggered = [];
-    for (const remind of reminders) {
-        const provinceData = oilData.prices[remind.province];
-        if (!provinceData) continue;
-        
-        const currentPrice = provinceData[remind.oilType];
-        if (!currentPrice) continue;
-        
-        // 如果有上次通知价格，检查涨幅
-        if (remind.lastNotifiedPrice !== null) {
-            const priceDiff = currentPrice - remind.lastNotifiedPrice;
-            if (priceDiff > remind.threshold) {
-                triggered.push({
-                    remind,
-                    currentPrice,
-                    lastPrice: remind.lastNotifiedPrice,
-                    priceDiff
-                });
-            }
-        }
+
+    let allHistory = {};
+    try {
+        allHistory = JSON.parse(fs.readFileSync(historyPath, 'utf-8'));
+    } catch (e) {
+        return res.json({ success: true, triggered: [] });
     }
-    
-    res.json({ success: true, triggered });
+
+    const triggered = [];
+    const { province, oilType } = remindSettings;
+
+    // 获取当前油价
+    const provinceData = oilData.prices[province];
+    if (!provinceData) {
+        return res.json({ success: true, triggered: [] });
+    }
+    const currentPrice = provinceData[oilType];
+    if (!currentPrice) {
+        return res.json({ success: true, triggered: [] });
+    }
+
+    // 获取30天历史
+    const provinceHistory = allHistory[province] || {};
+    const dates = Object.keys(provinceHistory).sort().slice(-30);
+    const prices = dates.map(d => provinceHistory[d]?.[oilType]).filter(p => p != null);
+
+    if (prices.length < 2) {
+        return res.json({ success: true, triggered: [] });
+    }
+
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+
+    // 降价提醒：当前价 <= 30天最低价
+    if (currentPrice <= minPrice) {
+        triggered.push({
+            type: 'drop',
+            province,
+            oilType,
+            currentPrice,
+            threshold: minPrice,
+            message: `📉 油价降了！${province} ${oilType}#汽油当前${currentPrice}元，跌至30天最低价，适合加油！`
+        });
+    }
+    // 涨价提醒：当前价 >= 30天最高价
+    else if (currentPrice >= maxPrice) {
+        triggered.push({
+            type: 'rise',
+            province,
+            oilType,
+            currentPrice,
+            threshold: maxPrice,
+            message: `📈 油价涨了！${province} ${oilType}#汽油当前${currentPrice}元，涨至30天最高价，赶紧加油！`
+        });
+    }
+
+    res.json({ success: true, triggered, debug: { minPrice, maxPrice, currentPrice, dataPoints: prices.length } });
 });
