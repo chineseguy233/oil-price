@@ -1713,6 +1713,16 @@ export default function App({ onGotoTrip, onGotoRankings }) {
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [pendingTab, setPendingTab] = useState(null) // 登录成功后要跳转的 tab
 
+  // 初始化时检查登录状态，未登录则弹登录框
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+    if (!user) {
+      setShowLoginModal(true)
+      setPendingTab('price')
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleLogout = useCallback(() => {
     const token = localStorage.getItem('oil_token')
     if (token) {
