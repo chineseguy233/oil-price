@@ -1697,8 +1697,8 @@ export default function App({ onGotoTrip, onGotoRankings }) {
   }
 
   const TABS = [
-    { id: 'price', name: '油价', icon: '⛽' },
-    { id: 'trend', name: '趋势', icon: '📈' },
+    { id: 'price', name: '油价', icon: '⛽', requiresAuth: true },
+    { id: 'trend', name: '趋势', icon: '📈', requiresAuth: true },
     { id: 'fuel', name: '油耗', icon: '📊', requiresAuth: true },
     { id: 'stations', name: '附近', icon: '🔍', requiresAuth: true },
     { id: 'my', name: '我的', icon: '👤', requiresAuth: true },
