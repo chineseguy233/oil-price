@@ -1,3 +1,4 @@
+const path = require('path');
 const config = {
   projectName: 'oil-price-app',
   date: '2026-04-19',
