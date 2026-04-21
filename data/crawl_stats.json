@@ -83,13 +83,25 @@
       "success": true,
       "source": "autohome",
       "provinces": 31
+    },
+    {
+      "time": "2026-04-21 00:00",
+      "success": true,
+      "source": "autohome",
+      "provinces": 31
+    },
+    {
+      "time": "2026-04-21 02:00",
+      "success": true,
+      "source": "autohome",
+      "provinces": 31
     }
   ],
   "last_crawl": {
-    "time": "2026-04-20 12:00",
+    "time": "2026-04-21 02:00",
     "success": true,
     "source": "autohome",
     "provinces": 31
   },
-  "success_rate": 92.9
+  "success_rate": 93.8
 }
